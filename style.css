@@ -198,3 +198,9 @@ textarea { min-height:44px; resize:vertical; }
     line-height: 1.45;
   }
 }
+
+/* Preserve paragraph breaks entered as blank lines in Supabase text fields. */
+.intro-copy,
+.editorial {
+  white-space: pre-line;
+}
