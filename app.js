@@ -114,29 +114,75 @@
     view.innerHTML=`<section class="end"><div><h1>Gracias</h1><div class="links"><a class="underlink" href="${esc(cfg.LINKTREE_URL)}" target="_blank" rel="noopener">Linktree ↗</a><a class="underlink" href="${esc(cfg.SPOTIFY_PLAYLIST_URL)}" target="_blank" rel="noopener">Spotify playlist ↗</a></div><p><a class="underlink" href="#/grid">${state.lang==='es'?'Volver al Grid':'Back to Grid'}</a></p></div></section>`;
   }
   function renderError(msg){ view.innerHTML=`<section class="admin-login"><div class="notice error">${esc(msg)}</div></section>`; }
-  function renderRoute(){
+  async function renderRoute(){
     if(state.loading){view.innerHTML='<section><div class="kicker">Loading</div></section>';return;}
     const parts=location.hash.replace(/^#\/?/,'').split('/'); const route=parts[0]||'intro';
-    if(route==='intro') renderIntro(); else if(route==='grid') renderGrid(); else if(route==='track') renderTrack(Number(parts[1])); else if(route==='end') renderEnd(); else renderIntro();
-    setTimeout(bindForms,0);
+    if(route==='intro') await renderIntro();
+    else if(route==='grid') renderGrid();
+    else if(route==='track') await renderTrack(Number(parts[1]));
+    else if(route==='end') renderEnd();
+    else await renderIntro();
+    bindForms();
   }
+
   async function like(target,trackId){
     const key=`${target}:${trackId||''}`;
     const liked=!!state.liked[key];
-    let result;
-    if(liked){
-      result=await supabase.rpc('delete_my_like',{p_target_type:target,p_track_id:trackId||null,p_client_id:clientId});
-    } else {
-      result=await supabase.from('likes').insert({target_type:target,track_id:trackId||null,client_id:clientId});
+    const {error}=await supabase.rpc('toggle_my_like',{
+      p_target_type:target,
+      p_track_id:trackId||null,
+      p_client_id:clientId,
+      p_like:!liked
+    });
+    if(error){
+      console.error('Like error:', error);
+      alert(state.lang==='es' ? `No se ha podido registrar el like: ${error.message}` : `The like could not be saved: ${error.message}`);
+      return;
     }
-    if(result.error && !String(result.error.message).toLowerCase().includes('duplicate')) console.error(result.error);
     await loadReactionCounts();
-    renderRoute();
+    await renderRoute();
   }
+
   function bindForms(){
-    document.querySelectorAll('[data-like]').forEach(b=>b.onclick=()=>like(b.dataset.like,b.dataset.track||null));
-    document.querySelectorAll('[data-comment-form]').forEach(f=>f.onsubmit=async e=>{e.preventDefault();const fd=new FormData(f);const body=String(fd.get('body')||'').trim(),name=String(fd.get('name')||'').trim();if(!body||!name)return;const {error}=await supabase.from('comments').insert({target_type:f.dataset.target,track_id:f.dataset.track||null,name,body,client_id:clientId});if(error)alert(error.message);else f.reset();renderRoute();});
+    document.querySelectorAll('[data-like]').forEach(b=>{
+      b.onclick=async ()=>{
+        if(b.dataset.busy==='1') return;
+        b.dataset.busy='1';
+        b.disabled=true;
+        try { await like(b.dataset.like,b.dataset.track||null); } finally { b.dataset.busy='0'; }
+      };
+    });
+    document.querySelectorAll('[data-comment-form]').forEach(f=>{
+      f.onsubmit=async e=>{
+        e.preventDefault();
+        if(f.dataset.busy==='1') return;
+        const fd=new FormData(f);
+        const body=String(fd.get('body')||'').trim();
+        const name=String(fd.get('name')||'').trim();
+        if(!name||!body) return;
+        f.dataset.busy='1';
+        const submit=f.querySelector('button[type="submit"]');
+        if(submit) submit.disabled=true;
+        const {error}=await supabase.from('comments').insert({
+          target_type:f.dataset.target,
+          track_id:f.dataset.track||null,
+          name,
+          body,
+          client_id:clientId
+        });
+        if(error){
+          console.error('Comment error:', error);
+          alert(state.lang==='es' ? `No se ha podido enviar el comentario: ${error.message}` : `The comment could not be sent: ${error.message}`);
+          f.dataset.busy='0';
+          if(submit) submit.disabled=false;
+          return;
+        }
+        f.reset();
+        await renderRoute();
+      };
+    });
   }
+
   langBtn.onclick=()=>{state.lang=state.lang==='es'?'en':'es';localStorage.setItem('ls_lang',state.lang);renderRoute();};
   window.addEventListener('hashchange',renderRoute);
   load();

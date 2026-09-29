@@ -113,3 +113,22 @@ textarea { min-height:44px; resize:vertical; }
   .track-grid{grid-template-columns:1fr 1fr}.tile-info{font-size:14px}.grid-head h2{font-size:34px}
   .track-copy h2{font-size:52px}.promo{display:block}.promo .links{margin-top:12px}
 }
+
+/* Reactions */
+.like-button {
+  color: var(--fg);
+  border: 1px solid var(--line);
+  padding: 9px 12px;
+  min-width: 92px;
+  text-align: left;
+  transition: border-color .2s ease, background .2s ease, transform .12s ease;
+}
+.like-button:hover { border-color:#777; }
+.like-button:active { transform:scale(.98); }
+.like-button.is-liked {
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
+}
+.like-button:disabled { opacity:.65; cursor:wait; }
+.like-label { margin-left:4px; }

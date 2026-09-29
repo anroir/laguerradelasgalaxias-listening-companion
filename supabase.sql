@@ -164,3 +164,73 @@ end;
 $$;
 
 grant execute on function public.delete_my_like(text, uuid, uuid) to anon, authenticated;
+
+-- Robust anonymous like toggle used by the public site.
+-- Run this section too if the database was already created from an earlier version.
+drop function if exists public.toggle_my_like(text, uuid, uuid, boolean);
+create or replace function public.toggle_my_like(
+  p_target_type text,
+  p_track_id uuid,
+  p_client_id uuid,
+  p_like boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+  v_liked boolean := false;
+begin
+  if p_target_type not in ('intro','track') then
+    raise exception 'Invalid target type';
+  end if;
+
+  if p_client_id is null then
+    raise exception 'Client id is required';
+  end if;
+
+  if p_target_type='intro' then
+    if p_track_id is not null then
+      raise exception 'Invalid intro target';
+    end if;
+  else
+    if p_track_id is null then
+      raise exception 'Track id is required';
+    end if;
+    if not exists (
+      select 1
+      from public.tracks t
+      join public.session_state s on s.slug='main'
+      where t.id=p_track_id
+        and (s.status='finished' or t.position <= s.current_position)
+    ) then
+      raise exception 'Track is not currently available';
+    end if;
+  end if;
+
+  if p_like then
+    insert into public.likes(target_type, track_id, client_id)
+    values (p_target_type, p_track_id, p_client_id)
+    on conflict do nothing;
+    v_liked := true;
+  else
+    delete from public.likes
+    where target_type=p_target_type
+      and client_id=p_client_id
+      and ((p_track_id is null and track_id is null) or track_id=p_track_id);
+    v_liked := false;
+  end if;
+
+  if p_target_type='intro' then
+    select count(*) into v_count from public.likes where target_type='intro';
+  else
+    select count(*) into v_count from public.likes where target_type='track' and track_id=p_track_id;
+  end if;
+
+  return jsonb_build_object('liked',v_liked,'count',v_count);
+end;
+$$;
+
+grant execute on function public.toggle_my_like(text, uuid, uuid, boolean) to anon, authenticated;
