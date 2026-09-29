@@ -110,7 +110,7 @@ textarea { min-height:44px; resize:vertical; }
   .admin-current{grid-template-columns:80px 1fr}.admin-current img{width:80px}
 }
 @media (max-width:480px){
-  .intro-copy, .editorial { font-size:21px; line-height:1.5; }
+  .intro-copy, .editorial { font-size:29px; line-height:1.45; }
   .track-grid{grid-template-columns:1fr 1fr}.tile-info{font-size:14px}.grid-head h2{font-size:34px}
   .track-copy h2{font-size:52px}.promo{display:block}.promo .links{margin-top:12px}
 }
@@ -194,7 +194,7 @@ textarea { min-height:44px; resize:vertical; }
   }
   .intro-copy {
     max-width: none;
-    font-size: 21px;
-    line-height: 1.5;
+    font-size: 29px;
+    line-height: 1.45;
   }
 }
