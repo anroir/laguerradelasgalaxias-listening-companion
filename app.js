@@ -5,7 +5,7 @@
   const langBtn = document.getElementById('lang-toggle');
   const supabase = window.supabase?.createClient(cfg.SUPABASE_URL || '', cfg.SUPABASE_ANON_KEY || '');
   const sessionSlug = cfg.SESSION_SLUG || 'main';
-  let state = { session:null, tracks:[], lang: getLang(), loading:true, counts:{} };
+  let state = { session:null, tracks:[], lang: getLang(), loading:true, counts:{}, liked:{} };
   let presenceChannel = null;
   let realtimeChannel = null;
   const clientIdKey = 'ls_client_id';
@@ -41,9 +41,20 @@
   }
   async function loadReactionCounts(){
     const trackIds=state.tracks.map(t=>t.id);
-    if(!trackIds.length) return;
-    const {data:likes}=await supabase.from('likes').select('track_id').in('track_id',trackIds);
-    const counts={}; (likes||[]).forEach(x=>counts[x.track_id]=(counts[x.track_id]||0)+1); state.counts.likes=counts;
+    const counts={};
+    const liked={};
+    const {data:trackLikes}=trackIds.length
+      ? await supabase.from('likes').select('id,track_id,client_id').eq('target_type','track').in('track_id',trackIds)
+      : {data:[]};
+    (trackLikes||[]).forEach(x=>{
+      counts[x.track_id]=(counts[x.track_id]||0)+1;
+      if(x.client_id===clientId) liked[`track:${x.track_id}`]=true;
+    });
+    const {data:introLikes}=await supabase.from('likes').select('id,client_id').eq('target_type','intro');
+    if(introLikes?.some(x=>x.client_id===clientId)) liked['intro:']=true;
+    state.counts.likes=counts;
+    state.counts.intro=(introLikes||[]).length;
+    state.liked=liked;
   }
   function subscribeRealtime(){
     if(realtimeChannel) supabase.removeChannel(realtimeChannel);
@@ -65,10 +76,12 @@
     q=trackId ? q.eq('track_id',trackId) : q.is('track_id',null);
     const {data}=await q; return data||[];
   }
-  async function reactionsHtml(targetType,trackId){
-    let q=supabase.from('likes').select('id',{count:'exact',head:true}).eq('target_type',targetType);
-    q=trackId?q.eq('track_id',trackId):q.is('track_id',null);
-    const {count}=await q; return `<div class="reaction-row"><button class="like-button" data-like="${targetType}" data-track="${trackId||''}">♡ ${count||0}</button></div>`;
+  function reactionsHtml(targetType,trackId){
+    const key=`${targetType}:${trackId||''}`;
+    const count=targetType==='intro' ? (state.counts.intro||0) : (state.counts.likes?.[trackId]||0);
+    const liked=!!state.liked[key];
+    const label=state.lang==='es' ? (liked?'Me gusta':'Me gusta') : 'Like';
+    return `<div class="reaction-row"><button class="like-button ${liked?'is-liked':''}" data-like="${targetType}" data-track="${trackId||''}" aria-pressed="${liked}">${liked?'♥':'♡'} ${count} <span class="like-label">${label}</span></button></div>`;
   }
   async function commentsHtml(targetType,trackId){
     const cs=await commentsFor(targetType,trackId);
@@ -108,8 +121,17 @@
     setTimeout(bindForms,0);
   }
   async function like(target,trackId){
-    const {error}=await supabase.from('likes').insert({target_type:target,track_id:trackId||null,client_id:clientId});
-    if(error && !String(error.message).includes('duplicate')) console.error(error); renderRoute();
+    const key=`${target}:${trackId||''}`;
+    const liked=!!state.liked[key];
+    let result;
+    if(liked){
+      result=await supabase.rpc('delete_my_like',{p_target_type:target,p_track_id:trackId||null,p_client_id:clientId});
+    } else {
+      result=await supabase.from('likes').insert({target_type:target,track_id:trackId||null,client_id:clientId});
+    }
+    if(result.error && !String(result.error.message).toLowerCase().includes('duplicate')) console.error(result.error);
+    await loadReactionCounts();
+    renderRoute();
   }
   function bindForms(){
     document.querySelectorAll('[data-like]').forEach(b=>b.onclick=()=>like(b.dataset.like,b.dataset.track||null));

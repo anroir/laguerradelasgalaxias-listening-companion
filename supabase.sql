@@ -137,3 +137,30 @@ end $$;
 
 -- IMPORTANT: after creating the Auth user, run this with the real UUID:
 -- insert into public.admins(user_id) values ('YOUR-AUTH-USER-UUID');
+
+-- Likes: allow each anonymous visitor to toggle their own like.
+drop policy if exists likes_delete on public.likes;
+
+-- The original table constraint protects track likes. This partial index also makes
+-- the intro like unique per visitor, because PostgreSQL UNIQUE treats NULLs as distinct.
+create unique index if not exists likes_intro_one_per_client
+  on public.likes (target_type, client_id)
+  where target_type='intro';
+
+
+-- Toggle helpers for anonymous likes. The client_id is generated and kept locally by the browser.
+create or replace function public.delete_my_like(p_target_type text, p_track_id uuid, p_client_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.likes
+  where target_type=p_target_type
+    and client_id=p_client_id
+    and ((p_track_id is null and track_id is null) or track_id=p_track_id);
+end;
+$$;
+
+grant execute on function public.delete_my_like(text, uuid, uuid) to anon, authenticated;
