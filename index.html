@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050505">
+  <meta name="description" content="Live listening session">
+  <title>Listening Session</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <a href="#/intro" class="brand" aria-label="Inicio">LISTENING SESSION</a>
+      <div class="top-actions">
+        <span id="listener-count" class="listeners" aria-live="polite">0 listeners</span>
+        <button id="lang-toggle" class="text-button" type="button">ES / EN</button>
+      </div>
+    </header>
+
+    <main id="view" class="view" aria-live="polite"></main>
+
+    <footer class="footer">
+      <span id="footer-status"></span>
+    </footer>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
