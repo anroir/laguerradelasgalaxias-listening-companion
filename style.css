@@ -69,7 +69,17 @@ textarea { min-height:44px; resize:vertical; }
 .track-hero { display:grid; grid-template-columns:minmax(0,.95fr) minmax(280px,1.05fr); gap:60px; align-items:start; }
 .track-cover { aspect-ratio:1; background:#111; }
 .track-copy h2 { font-family:var(--serif); font-size:clamp(48px,6vw,90px); line-height:.9; font-weight:400; letter-spacing:-.045em; margin:0 0 14px; }
-.artist { font-size:16px; margin-bottom:12px; }
+.track-field { display:flex; align-items:center; gap:10px; min-width:0; }
+.track-icon { width:16px; height:16px; flex:0 0 16px; color:var(--muted); display:inline-flex; align-items:center; justify-content:center; }
+.track-icon svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.35; stroke-linecap:round; stroke-linejoin:round; }
+.artist-field { margin-bottom:12px; }
+.artist { font-size:16px; margin:0; }
+.title-field { align-items:flex-start; margin-left:0; }
+.title-field .track-icon { margin-top:7px; }
+.track-details { display:flex; flex-wrap:wrap; align-items:center; gap:7px 18px; margin-top:18px; color:var(--muted); font-size:11px; line-height:1.6; }
+.track-details .track-field { gap:7px; }
+.track-details .track-icon { width:13px; height:13px; flex-basis:13px; }
+.track-details .track-icon svg { width:13px; height:13px; stroke-width:1.25; }
 .track-meta { color:var(--muted); font-size:11px; line-height:1.6; }
 .track-copy .editorial { margin-top:40px; }
 .track-nav { display:flex; align-items:center; justify-content:space-between; gap:18px; border-top:1px solid var(--line); margin-top:55px; padding-top:20px; }
@@ -238,5 +248,5 @@ textarea { min-height:44px; resize:vertical; }
 /* Session navigation refinements */
 .next-main.is-started { border-color: #5a9f68; color: #6faf79; background: rgba(70, 140, 80, .08); }
 .next-main.is-started:hover { background: rgba(70, 140, 80, .14); }
-.current-choice { border-color: #5a9f68; color: #6faf79; }
+
 .admin-controls [data-action=reset] { border-color: #555; background: transparent; }
