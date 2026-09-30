@@ -10,6 +10,7 @@
   let realtimeChannel = null;
   let sessionPollTimer = null;
   let countdownTimer = null;
+  let renderSeq = 0;
   const clientIdKey = 'ls_client_id';
   const clientId = localStorage.getItem(clientIdKey) || crypto.randomUUID();
   localStorage.setItem(clientIdKey, clientId);
@@ -46,33 +47,14 @@
     state.tracks=tracks||[];
     return true;
   }
-  async function fetchPublicSession(){
-    const base=String(cfg.SUPABASE_URL||'').replace(/\/$/,'');
-    const url=`${base}/rest/v1/session_state?slug=eq.${encodeURIComponent(sessionSlug)}&select=*`;
-    const res=await fetch(url,{method:'GET',cache:'no-store',headers:{apikey:cfg.SUPABASE_ANON_KEY||'',Authorization:`Bearer ${cfg.SUPABASE_ANON_KEY||''}`,'Cache-Control':'no-cache, no-store, max-age=0'}});
-    if(!res.ok) throw new Error(`Session request failed: ${res.status}`);
-    const rows=await res.json();
-    return rows[0]||null;
-  }
-
-  async function refreshPublicState(){
-    try{
-      const session=await fetchPublicSession();
-      if(!session) return;
-      const changed=!state.session || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
-      if(!changed) return;
-      state.session=session;
-      await refreshTracks();
-      await loadReactionCounts();
-      await renderRoute();
-    }catch(err){ console.error('Public session refresh error:',err); }
-  }
-
   function startSessionPolling(){
     if(sessionPollTimer) clearInterval(sessionPollTimer);
-    refreshPublicState();
-    sessionPollTimer=setInterval(()=>{
-      if(document.visibilityState!=='hidden') refreshPublicState();
+    sessionPollTimer=setInterval(async()=>{
+      if(document.visibilityState==='hidden') return;
+      const {data:session,error}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
+      if(error || !session) return;
+      const changed=!state.session || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
+      if(changed){ state.session=session; await refreshTracks(); await loadReactionCounts(); renderRoute(); }
     },1000);
   }
   async function loadReactionCounts(){
@@ -148,9 +130,10 @@
     };
     tick(); countdownTimer=setInterval(tick,1000);
   }
-  async function renderIntro(){
+  async function renderIntro(renderId){
     const intro=state.session||{};
     const comments=await commentsHtml('intro',null); const reactions=await reactionsHtml('intro',null);
+    if(renderId !== renderSeq) return;
     view.innerHTML=`<section class="intro"><div class="intro-grid"><div class="hero-cover">${intro.intro_cover_url?`<img class="cover" src="${esc(intro.intro_cover_url)}" alt="">`:''}</div><div><div class="kicker">${state.lang==='es'?'Sesión de escucha':'Listening session'}</div><h1>${esc(text(intro,'intro_title')||intro.title||'Listening Session')}</h1><div class="intro-copy dropcap">${esc(text(intro,'intro_text'))}</div>${countdownHtml()}${promoHtml()}<div class="reactions">${reactions}${comments}</div></div></div></section>`;
     startCountdown();
   }
@@ -163,12 +146,13 @@
     }).join('');
     view.innerHTML=`<section><div class="grid-head"><div><div class="kicker">${ended?(state.lang==='es'?'Sesión terminada':'Session ended'):(state.lang==='es'?'Tracklist':'Tracklist')}</div><h2>Grid</h2></div><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-grid">${tiles}</div>${promoHtml()}</section>`;
   }
-  async function renderTrack(position){
+  async function renderTrack(position,renderId){
     const t=state.tracks.find(x=>x.position===position);
     if(!t || !isVisible(t)){ location.hash='#/grid'; return; }
     const ended=state.session?.status==='finished';
     const prev=state.tracks.find(x=>x.position===position-1 && isVisible(x)); const next=state.tracks.find(x=>x.position===position+1 && isVisible(x));
     const comments=await commentsHtml('track',t.id); const reactions=await reactionsHtml('track',t.id);
+    if(renderId !== renderSeq) return;
     view.innerHTML=`<section class="track-page"><div class="track-topnav"><a class="underlink" href="#/grid">Grid</a><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-hero"><div class="track-cover"><img class="cover" src="${esc(t.cover_url)}" alt=""></div><div class="track-copy"><div class="kicker">${String(t.position).padStart(2,'0')}</div><div class="artist">${esc(text(t,'artist'))}</div><h2>${esc(text(t,'title'))}</h2><div class="track-meta">${esc(text(t,'album'))}${t.label?' · '+esc(t.label):''}${t.year?' · '+esc(t.year):''}</div><div class="editorial dropcap">${esc(text(t,'editorial'))}</div>${reactions}<div class="comments">${comments}</div></div></div>${everyTenPromo(t.position)}<nav class="track-nav"><span>${prev?`<a href="${trackUrl(prev.position)}"><span class="arrow">←</span> ${state.lang==='es'?'Previous':'Previous'}</a>`:''}</span><a href="#/grid">Grid</a><a href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a><span>${next?`<a href="${trackUrl(next.position)}">${state.lang==='es'?'Next':'Next'} <span class="arrow">→</span></a>`:''}</span></nav></section>`;
     bindForms();
   }
@@ -177,14 +161,15 @@
   }
   function renderError(msg){ view.innerHTML=`<section class="admin-login"><div class="notice error">${esc(msg)}</div></section>`; }
   async function renderRoute(){
+    const renderId = ++renderSeq;
     if(state.loading){view.innerHTML='<section><div class="kicker">Loading</div></section>';return;}
     const parts=location.hash.replace(/^#\/?/,'').split('/'); const route=parts[0]||'intro';
-    if(route==='intro') await renderIntro();
+    if(route==='intro') await renderIntro(renderId);
     else if(route==='grid') renderGrid();
-    else if(route==='track') await renderTrack(Number(parts[1]));
+    else if(route==='track') await renderTrack(Number(parts[1]),renderId);
     else if(route==='end') renderEnd();
-    else await renderIntro();
-    bindForms();
+    else await renderIntro(renderId);
+    if(renderId === renderSeq) bindForms();
   }
 
   async function like(target,trackId){
