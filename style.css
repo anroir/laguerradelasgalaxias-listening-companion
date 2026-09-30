@@ -234,3 +234,9 @@ textarea { min-height:44px; resize:vertical; }
   .next-main { padding:20px 22px; font-size:28px; }
   .track-nav { flex-wrap:wrap; }
 }
+
+/* Session navigation refinements */
+.next-main.is-started { border-color: #5a9f68; color: #6faf79; background: rgba(70, 140, 80, .08); }
+.next-main.is-started:hover { background: rgba(70, 140, 80, .14); }
+.current-choice { border-color: #5a9f68; color: #6faf79; }
+.admin-controls [data-action=reset] { border-color: #555; background: transparent; }

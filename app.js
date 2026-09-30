@@ -40,9 +40,9 @@
     const label=state.lang==='es'?'Siguiente':'Continue';
     const message=state.lang==='es'?'La sesión aún no ha comenzado.':'The session has not started yet.';
     if(!started){
-      return `<div class="intro-next"><button class="next-main" data-intro-next>${label}</button><div class="intro-next-message" data-intro-message hidden>${message}</div></div>`;
+      return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-next-message" data-intro-message hidden>${message}</div></div>`;
     }
-    return `<div class="intro-next"><button class="next-main" data-intro-next>${label}</button><div class="intro-choice" data-intro-choice hidden><div class="intro-choice-title">${state.lang==='es'?'¿Dónde quieres ir?':'Where would you like to go?'}</div><div class="intro-choice-actions"><a class="choice-button" href="#/grid">${state.lang==='es'?'Grid':'Grid'}</a><a class="choice-button" href="${trackUrl(getCurrent())}">${state.lang==='es'?'Tema actual':'Current track'}</a></div></div></div>`;
+    return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-choice" data-intro-choice hidden><div class="intro-choice-title">${state.lang==='es'?'¿Dónde quieres ir?':'Where would you like to go?'}</div><div class="intro-choice-actions"><a class="choice-button" href="#/grid">${state.lang==='es'?'Grid':'Grid'}</a><a class="choice-button current-choice" data-current-track href="${trackUrl(getCurrent())}">${state.lang==='es'?'Tema actual':'Current track'}</a></div></div></div>`;
   }
   async function load(){
     if(!supabase){ renderError('Configura config.js antes de usar la web.'); return; }
@@ -204,6 +204,7 @@
   }
 
   function bindForms(){
+    document.querySelectorAll('[data-current-track]').forEach(a=>{ a.onclick=()=>{ setTimeout(()=>window.scrollTo({top:0,left:0,behavior:'auto'}),50); }; });
     document.querySelectorAll('[data-intro-next]').forEach(b=>{
       b.onclick=()=>{
         const started=state.session?.status==='live' && getCurrent()>0;
@@ -256,6 +257,6 @@
   }
 
   langBtn.onclick=()=>{state.lang=state.lang==='es'?'en':'es';localStorage.setItem('ls_lang',state.lang);renderRoute();};
-  window.addEventListener('hashchange',renderRoute);
+  window.addEventListener('hashchange',async()=>{ await renderRoute(); window.scrollTo({top:0,left:0,behavior:'auto'}); });
   load();
 })();
