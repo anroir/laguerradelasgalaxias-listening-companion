@@ -31,6 +31,19 @@
     return `<div class="promo"><small>${state.lang==='es'?'Enlaces':'Links'}</small><div class="links"><a class="underlink" href="${esc(cfg.SPOTIFY_PLAYLIST_URL)}" target="_blank" rel="noopener">Spotify playlist ↗</a><a class="underlink" href="${esc(cfg.LINKTREE_URL)}" target="_blank" rel="noopener">Linktree ↗</a></div></div>`;
   }
   function everyTenPromo(position){ return position % 10 === 0 ? promoHtml() : ''; }
+  function currentTrack(){
+    const pos=getCurrent();
+    return pos ? state.tracks.find(t=>t.position===pos) : null;
+  }
+  function introNextHtml(){
+    const started=state.session?.status==='live' && getCurrent()>0;
+    const label=state.lang==='es'?'Siguiente':'Continue';
+    const message=state.lang==='es'?'La sesión aún no ha comenzado.':'The session has not started yet.';
+    if(!started){
+      return `<div class="intro-next"><button class="next-main" data-intro-next>${label}</button><div class="intro-next-message" data-intro-message hidden>${message}</div></div>`;
+    }
+    return `<div class="intro-next"><button class="next-main" data-intro-next>${label}</button><div class="intro-choice" data-intro-choice hidden><div class="intro-choice-title">${state.lang==='es'?'¿Dónde quieres ir?':'Where would you like to go?'}</div><div class="intro-choice-actions"><a class="choice-button" href="#/grid">${state.lang==='es'?'Grid':'Grid'}</a><a class="choice-button" href="${trackUrl(getCurrent())}">${state.lang==='es'?'Tema actual':'Current track'}</a></div></div></div>`;
+  }
   async function load(){
     if(!supabase){ renderError('Configura config.js antes de usar la web.'); return; }
     const {data:session,error:sErr}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
@@ -134,7 +147,7 @@
     const intro=state.session||{};
     const comments=await commentsHtml('intro',null); const reactions=await reactionsHtml('intro',null);
     if(renderId !== renderSeq) return;
-    view.innerHTML=`<section class="intro"><div class="intro-grid"><div class="hero-cover">${intro.intro_cover_url?`<img class="cover" src="${esc(intro.intro_cover_url)}" alt="">`:''}</div><div><div class="kicker">${state.lang==='es'?'Sesión de escucha':'Listening session'}</div><h1>${esc(text(intro,'intro_title')||intro.title||'Listening Session')}</h1><div class="intro-copy dropcap">${esc(text(intro,'intro_text'))}</div>${countdownHtml()}${promoHtml()}<div class="reactions">${reactions}${comments}</div></div></div></section>`;
+    view.innerHTML=`<section class="intro"><div class="intro-grid"><div class="hero-cover">${intro.intro_cover_url?`<img class="cover" src="${esc(intro.intro_cover_url)}" alt="">`:''}</div><div><div class="kicker">${state.lang==='es'?'Sesión de escucha':'Listening session'}</div><h1>${esc(text(intro,'intro_title')||intro.title||'Listening Session')}</h1><div class="intro-copy dropcap">${esc(text(intro,'intro_text'))}</div>${countdownHtml()}${introNextHtml()}${promoHtml()}<div class="reactions">${reactions}${comments}</div></div></div></section>`;
     startCountdown();
   }
   function renderGrid(){
@@ -153,7 +166,7 @@
     const prev=state.tracks.find(x=>x.position===position-1 && isVisible(x)); const next=state.tracks.find(x=>x.position===position+1 && isVisible(x));
     const comments=await commentsHtml('track',t.id); const reactions=await reactionsHtml('track',t.id);
     if(renderId !== renderSeq) return;
-    view.innerHTML=`<section class="track-page"><div class="track-topnav"><a class="underlink" href="#/grid">Grid</a><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-hero"><div class="track-cover"><img class="cover" src="${esc(t.cover_url)}" alt=""></div><div class="track-copy"><div class="kicker">${String(t.position).padStart(2,'0')}</div><div class="artist">${esc(text(t,'artist'))}</div><h2>${esc(text(t,'title'))}</h2><div class="track-meta">${esc(text(t,'album'))}${t.label?' · '+esc(t.label):''}${t.year?' · '+esc(t.year):''}</div><div class="editorial dropcap">${esc(text(t,'editorial'))}</div>${reactions}<div class="comments">${comments}</div></div></div>${everyTenPromo(t.position)}<nav class="track-nav"><span>${prev?`<a href="${trackUrl(prev.position)}"><span class="arrow">←</span> ${state.lang==='es'?'Previous':'Previous'}</a>`:''}</span><a href="#/grid">Grid</a><a href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a><span>${next?`<a href="${trackUrl(next.position)}">${state.lang==='es'?'Next':'Next'} <span class="arrow">→</span></a>`:''}</span></nav></section>`;
+    view.innerHTML=`<section class="track-page"><div class="track-topnav"><a class="underlink" href="#/grid">Grid</a><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-hero"><div class="track-cover"><img class="cover" src="${esc(t.cover_url)}" alt=""></div><div class="track-copy"><div class="kicker">${String(t.position).padStart(2,'0')}</div><div class="artist">${esc(text(t,'artist'))}</div><h2>${esc(text(t,'title'))}</h2><div class="track-meta">${esc(text(t,'album'))}${t.label?' · '+esc(t.label):''}${t.year?' · '+esc(t.year):''}</div><div class="editorial dropcap">${esc(text(t,'editorial'))}</div>${reactions}<div class="comments">${comments}</div></div></div>${everyTenPromo(t.position)}<nav class="track-nav"><span>${prev?`<a href="${trackUrl(prev.position)}"><span class="arrow">←</span> ${state.lang==='es'?'Anterior':'Previous'}</a>`:''}</span><a href="#/grid">Grid</a><a href="#/intro">${state.lang==='es'?'Inicio':'Home'}</a><a href="${currentTrack()?trackUrl(currentTrack().position):'#'}" class="current-link">${state.lang==='es'?'Actual':'Current'}</a><span>${next?`<a href="${trackUrl(next.position)}">${state.lang==='es'?'Siguiente':'Next'} <span class="arrow">→</span></a>`:''}</span></nav></section>`;
     bindForms();
   }
   function renderEnd(){
@@ -191,6 +204,18 @@
   }
 
   function bindForms(){
+    document.querySelectorAll('[data-intro-next]').forEach(b=>{
+      b.onclick=()=>{
+        const started=state.session?.status==='live' && getCurrent()>0;
+        const message=document.querySelector('[data-intro-message]');
+        const choice=document.querySelector('[data-intro-choice]');
+        if(!started){
+          if(message) message.hidden=false;
+          return;
+        }
+        if(choice) choice.hidden=!choice.hidden;
+      };
+    });
     document.querySelectorAll('[data-like]').forEach(b=>{
       b.onclick=async ()=>{
         if(b.dataset.busy==='1') return;
