@@ -40,21 +40,39 @@
     await loadReactionCounts();
     subscribeRealtime(); subscribePresence(); startSessionPolling(); renderRoute();
   }
+  async function freshRest(path){
+    const base=String(cfg.SUPABASE_URL||'').replace(/\/$/,'');
+    const key=cfg.SUPABASE_ANON_KEY||'';
+    const sep=path.includes('?')?'&':'?';
+    const url=`${base}/rest/v1/${path}${sep}_ls=${Date.now()}`;
+    const res=await fetch(url,{method:'GET',cache:'no-store',headers:{apikey:key,Authorization:`Bearer ${key}`,'Cache-Control':'no-cache'}});
+    if(!res.ok) throw new Error(`Supabase REST ${res.status}: ${await res.text()}`);
+    return res.json();
+  }
   async function refreshTracks(){
-    const {data:tracks,error}=await supabase.from('tracks').select('*').order('position');
-    if(error){ console.error('Track refresh error:', error); return false; }
-    state.tracks=tracks||[];
-    return true;
+    try{
+      const tracks=await freshRest('tracks?select=*&order=position.asc');
+      state.tracks=tracks||[];
+      return true;
+    }catch(error){ console.error('Track refresh error:',error); return false; }
+  }
+  async function getFreshSession(){
+    try{
+      const rows=await freshRest(`session_state?slug=eq.${encodeURIComponent(sessionSlug)}&select=*`);
+      return rows?.[0]||null;
+    }catch(error){ console.error('Session refresh error:',error); return null; }
   }
   function startSessionPolling(){
     if(sessionPollTimer) clearInterval(sessionPollTimer);
-    sessionPollTimer=setInterval(async()=>{
+    const poll=async()=>{
       if(document.visibilityState==='hidden') return;
-      const {data:session,error}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
-      if(error || !session) return;
+      const session=await getFreshSession();
+      if(!session) return;
       const changed=!state.session || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
-      if(changed){ state.session=session; await refreshTracks(); await loadReactionCounts(); renderRoute(); }
-    },1000);
+      if(changed){ state.session=session; await refreshTracks(); await loadReactionCounts(); await renderRoute(); }
+    };
+    poll();
+    sessionPollTimer=setInterval(poll,1000);
   }
   async function loadReactionCounts(){
     const trackIds=state.tracks.map(t=>t.id);
