@@ -204,3 +204,17 @@ textarea { min-height:44px; resize:vertical; }
 .editorial {
   white-space: pre-line;
 }
+
+
+/* Intro countdown */
+.countdown { margin:42px 0 8px; padding:24px 0 8px; border-top:1px solid var(--line); }
+.countdown-label { color:var(--muted); font-size:10px; letter-spacing:.16em; text-transform:uppercase; margin-bottom:10px; }
+.countdown-time { font-family:var(--mono); font-size:clamp(28px,4vw,54px); letter-spacing:.04em; line-height:1; }
+.countdown-time i { color:var(--muted); font-style:normal; padding:0 5px; }
+.countdown-admin { border:1px solid var(--line); padding:22px; display:grid; gap:18px; }
+.countdown-admin h3 { font-family:var(--serif); font-size:30px; font-weight:400; margin:0 0 4px; }
+.checkline { display:flex; align-items:center; gap:8px; font-size:12px; }
+.checkline input { width:auto; }
+.countdown-settings { display:flex; gap:10px; flex-wrap:wrap; }
+.countdown-settings input { min-width:240px; }
+@media (max-width:480px){ .countdown-time { font-size:28px; } .countdown-time i { padding:0 2px; } }

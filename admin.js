@@ -11,8 +11,30 @@
   async function load(){const [a,b]=await Promise.all([sb.from('session_state').select('*').eq('slug',slug).single(),sb.from('tracks').select('*').order('position')]);if(a.error||b.error){error((a.error||b.error).message);return;}session=a.data;tracks=b.data;render();}
   function subscribe(){if(channel)sb.removeChannel(channel);channel=sb.channel(`admin-${slug}`).on('postgres_changes',{event:'*',schema:'public',table:'session_state'},p=>{session=p.new;render();}).subscribe();}
   function presence(){const ch=sb.channel(`listeners-${slug}`,{config:{presence:{key:'admin-'+crypto.randomUUID()}}});ch.on('presence',{event:'sync'},()=>{countEl.textContent=`${Object.keys(ch.presenceState()).length} listeners`}).subscribe();}
-  function render(){const current=tracks.find(x=>x.position===session.current_position);view.innerHTML=`<section class="admin-panel"><div class="grid-head"><div><div class="kicker">ADMIN</div><h2>Session control</h2></div><button id="logout" class="text-button">Sign out</button></div><div class="admin-dashboard"><div class="notice">Status: <strong>${esc(session.status)}</strong> · Current position: <strong>${session.current_position||0}</strong> / ${tracks.length}</div>${current?`<div class="admin-current"><img src="${esc(current.cover_url)}"><div><div class="kicker">NOW PLAYING · ${current.position}</div><h2>${esc(t(current,'title'))}</h2><div>${esc(t(current,'artist'))}</div></div></div>`:''}<div class="admin-controls"><button data-action="start">Start</button><button data-action="prev">← Previous</button><button data-action="next">Next →</button><button data-action="end" class="danger">End session</button></div><div class="admin-list">${tracks.map(x=>`<div class="admin-row"><span class="num">${String(x.position).padStart(2,'0')}</span><img src="${esc(x.cover_url)}"><div class="title">${esc(t(x,'artist'))}<br><small>${esc(t(x,'title'))}</small></div><button data-jump="${x.position}">Jump</button></div>`).join('')}</div></div></section>`;bind();}
+  function localDateTimeValue(iso){
+    if(!iso) return '';
+    const d=new Date(iso); if(Number.isNaN(d.getTime())) return '';
+    const pad=n=>String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function render(){
+    const current=tracks.find(x=>x.position===session.current_position);
+    view.innerHTML=`<section class="admin-panel"><div class="grid-head"><div><div class="kicker">ADMIN</div><h2>Session control</h2></div><button id="logout" class="text-button">Sign out</button></div><div class="admin-dashboard"><div class="notice">Status: <strong>${esc(session.status)}</strong> · Current position: <strong>${session.current_position||0}</strong> / ${tracks.length}</div>${current?`<div class="admin-current"><img src="${esc(current.cover_url)}"><div><div class="kicker">NOW PLAYING · ${current.position}</div><h2>${esc(t(current,'title'))}</h2><div>${esc(t(current,'artist'))}</div></div></div>`:''}<div class="admin-controls"><button data-action="start">Start</button><button data-action="prev">← Previous</button><button data-action="next">Next →</button><button data-action="end" class="danger">End session</button></div><div class="countdown-admin"><div><div class="kicker">COUNTDOWN</div><h3>Intro countdown</h3><p class="meta">It appears at the end of the public introduction.</p></div><label class="checkline"><input id="countdown-enabled" type="checkbox" ${session.countdown_enabled?'checked':''}> Enabled</label><div class="countdown-settings"><input id="countdown-target" type="datetime-local" value="${localDateTimeValue(session.countdown_target_at)}"><button id="save-countdown" class="submit" type="button">Save countdown</button></div></div><div class="admin-list">${tracks.map(x=>`<div class="admin-row"><span class="num">${String(x.position).padStart(2,'0')}</span><img src="${esc(x.cover_url)}"><div class="title">${esc(t(x,'artist'))}<br><small>${esc(t(x,'title'))}</small></div><button data-jump="${x.position}">Jump</button></div>`).join('')}</div></div></section>`;bind();
+  }
   async function update(p,status=null){const patch={current_position:p};if(status)patch.status=status;const {error}=await sb.from('session_state').update(patch).eq('slug',slug);if(error)alert(error.message);}
-  function bind(){document.getElementById('logout').onclick=async()=>{await sb.auth.signOut();renderLogin();};document.querySelectorAll('[data-action]').forEach(b=>b.onclick=async()=>{const a=b.dataset.action;if(a==='start')await update(1,'live');if(a==='prev')await update(Math.max(1,(session.current_position||1)-1),'live');if(a==='next')await update(Math.min(tracks.length,(session.current_position||0)+1),'live');if(a==='end')await update(session.current_position||tracks.length,'finished');});document.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>update(Number(b.dataset.jump),'live'));}
+  function bind(){
+    document.getElementById('logout').onclick=async()=>{await sb.auth.signOut();renderLogin();};
+    document.querySelectorAll('[data-action]').forEach(b=>b.onclick=async()=>{const a=b.dataset.action;if(a==='start')await update(1,'live');if(a==='prev')await update(Math.max(1,(session.current_position||1)-1),'live');if(a==='next')await update(Math.min(tracks.length,(session.current_position||0)+1),'live');if(a==='end')await update(session.current_position||tracks.length,'finished');});
+    document.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>update(Number(b.dataset.jump),'live'));
+    const save=document.getElementById('save-countdown');
+    if(save) save.onclick=async()=>{
+      const enabled=document.getElementById('countdown-enabled').checked;
+      const raw=document.getElementById('countdown-target').value;
+      if(enabled && !raw){alert('Choose a date and time for the countdown.');return;}
+      const target=raw ? new Date(raw).toISOString() : null;
+      const {error}=await sb.from('session_state').update({countdown_enabled:enabled,countdown_target_at:target}).eq('slug',slug);
+      if(error) alert(error.message); else { session.countdown_enabled=enabled; session.countdown_target_at=target; render(); }
+    };
+  }
   init();
 })();

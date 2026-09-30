@@ -8,6 +8,8 @@
   let state = { session:null, tracks:[], lang: getLang(), loading:true, counts:{}, liked:{} };
   let presenceChannel = null;
   let realtimeChannel = null;
+  let sessionPollTimer = null;
+  let countdownTimer = null;
   const clientIdKey = 'ls_client_id';
   const clientId = localStorage.getItem(clientIdKey) || crypto.randomUUID();
   localStorage.setItem(clientIdKey, clientId);
@@ -30,14 +32,29 @@
   function everyTenPromo(position){ return position % 10 === 0 ? promoHtml() : ''; }
   async function load(){
     if(!supabase){ renderError('Configura config.js antes de usar la web.'); return; }
-    const [{data:session,error:sErr},{data:tracks,error:tErr}] = await Promise.all([
-      supabase.from('session_state').select('*').eq('slug',sessionSlug).single(),
-      supabase.from('tracks').select('*').order('position')
-    ]);
-    if(sErr || tErr){ renderError((sErr||tErr).message); return; }
-    state.session=session; state.tracks=tracks; state.loading=false;
+    const {data:session,error:sErr}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
+    if(sErr){ renderError(sErr.message); return; }
+    state.session=session;
+    await refreshTracks();
+    state.loading=false;
     await loadReactionCounts();
-    subscribeRealtime(); subscribePresence(); renderRoute();
+    subscribeRealtime(); subscribePresence(); startSessionPolling(); renderRoute();
+  }
+  async function refreshTracks(){
+    const {data:tracks,error}=await supabase.from('tracks').select('*').order('position');
+    if(error){ console.error('Track refresh error:', error); return false; }
+    state.tracks=tracks||[];
+    return true;
+  }
+  function startSessionPolling(){
+    if(sessionPollTimer) clearInterval(sessionPollTimer);
+    sessionPollTimer=setInterval(async()=>{
+      if(document.visibilityState==='hidden') return;
+      const {data:session,error}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
+      if(error || !session) return;
+      const changed=!state.session || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
+      if(changed){ state.session=session; await refreshTracks(); await loadReactionCounts(); renderRoute(); }
+    },5000);
   }
   async function loadReactionCounts(){
     const trackIds=state.tracks.map(t=>t.id);
@@ -59,7 +76,12 @@
   function subscribeRealtime(){
     if(realtimeChannel) supabase.removeChannel(realtimeChannel);
     realtimeChannel=supabase.channel(`session-${sessionSlug}`)
-      .on('postgres_changes',{event:'*',schema:'public',table:'session_state',filter:`slug=eq.${sessionSlug}`},p=>{ state.session=p.new; renderRoute(); })
+      .on('postgres_changes',{event:'*',schema:'public',table:'session_state',filter:`slug=eq.${sessionSlug}`},async p=>{
+        state.session=p.new;
+        await refreshTracks();
+        await loadReactionCounts();
+        renderRoute();
+      })
       .on('postgres_changes',{event:'*',schema:'public',table:'comments'},()=>renderRoute())
       .on('postgres_changes',{event:'*',schema:'public',table:'likes'},()=>renderRoute())
       .subscribe();
@@ -87,10 +109,31 @@
     const cs=await commentsFor(targetType,trackId);
     return `<div class="comments"><div class="comment-list">${cs.map(c=>`<div class="comment"><strong>${esc(c.name)}</strong>${esc(c.body)}</div>`).join('')}</div><form class="comment-form" data-comment-form data-target="${targetType}" data-track="${trackId||''}"><input name="name" maxlength="60" required placeholder="${state.lang==='es'?'Nombre':'Name'}"><textarea name="body" maxlength="500" required placeholder="${state.lang==='es'?'Comentario':'Comment'}"></textarea><button class="submit" type="submit">${state.lang==='es'?'Enviar':'Send'}</button></form></div>`;
   }
+  function countdownHtml(){
+    if(!state.session?.countdown_enabled || !state.session?.countdown_target_at) return '';
+    const label=state.lang==='es'?'La sesión comienza en':'Session starts in';
+    return `<div class="countdown" data-countdown-target="${esc(state.session.countdown_target_at)}"><div class="countdown-label">${label}</div><div class="countdown-time"><span data-cd-days>00</span><i>:</i><span data-cd-hours>00</span><i>:</i><span data-cd-minutes>00</span><i>:</i><span data-cd-seconds>00</span></div></div>`;
+  }
+  function startCountdown(){
+    if(countdownTimer) clearInterval(countdownTimer);
+    const el=document.querySelector('[data-countdown-target]');
+    if(!el) return;
+    const target=new Date(el.dataset.countdownTarget).getTime();
+    const tick=()=>{
+      const diff=Math.max(0,target-Date.now());
+      const total=Math.floor(diff/1000);
+      const days=Math.floor(total/86400); const hours=Math.floor((total%86400)/3600); const minutes=Math.floor((total%3600)/60); const seconds=total%60;
+      const set=(sel,v)=>{const n=el.querySelector(sel);if(n)n.textContent=String(v).padStart(2,'0');};
+      set('[data-cd-days]',days); set('[data-cd-hours]',hours); set('[data-cd-minutes]',minutes); set('[data-cd-seconds]',seconds);
+      if(diff<=0) clearInterval(countdownTimer);
+    };
+    tick(); countdownTimer=setInterval(tick,1000);
+  }
   async function renderIntro(){
     const intro=state.session||{};
     const comments=await commentsHtml('intro',null); const reactions=await reactionsHtml('intro',null);
-    view.innerHTML=`<section class="intro"><div class="intro-grid"><div class="hero-cover">${intro.intro_cover_url?`<img class="cover" src="${esc(intro.intro_cover_url)}" alt="">`:''}</div><div><div class="kicker">${state.lang==='es'?'Sesión de escucha':'Listening session'}</div><h1>${esc(text(intro,'intro_title')||intro.title||'Listening Session')}</h1><div class="intro-copy dropcap">${esc(text(intro,'intro_text'))}</div>${promoHtml()}<div class="reactions">${reactions}${comments}</div></div></div></section>`;
+    view.innerHTML=`<section class="intro"><div class="intro-grid"><div class="hero-cover">${intro.intro_cover_url?`<img class="cover" src="${esc(intro.intro_cover_url)}" alt="">`:''}</div><div><div class="kicker">${state.lang==='es'?'Sesión de escucha':'Listening session'}</div><h1>${esc(text(intro,'intro_title')||intro.title||'Listening Session')}</h1><div class="intro-copy dropcap">${esc(text(intro,'intro_text'))}</div>${countdownHtml()}${promoHtml()}<div class="reactions">${reactions}${comments}</div></div></div></section>`;
+    startCountdown();
   }
   function renderGrid(){
     const visible=state.tracks.filter(isVisible); const ended=state.session?.status==='finished';
