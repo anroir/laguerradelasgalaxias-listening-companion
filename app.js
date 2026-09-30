@@ -54,7 +54,7 @@
       if(error || !session) return;
       const changed=!state.session || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
       if(changed){ state.session=session; await refreshTracks(); await loadReactionCounts(); renderRoute(); }
-    },5000);
+    },1000);
   }
   async function loadReactionCounts(){
     const trackIds=state.tracks.map(t=>t.id);
