@@ -11,6 +11,9 @@
   let sessionPollTimer = null;
   let countdownTimer = null;
   let renderSeq = 0;
+  let previousSessionPosition = null;
+  let sessionInitialized = false;
+  let promptTimer = null;
   const clientIdKey = 'ls_client_id';
   const clientId = localStorage.getItem(clientIdKey) || crypto.randomUUID();
   localStorage.setItem(clientIdKey, clientId);
@@ -42,13 +45,15 @@
     if(!started){
       return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-next-message" data-intro-message hidden>${message}</div></div>`;
     }
-    return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-choice" data-intro-choice hidden><div class="intro-choice-title">${state.lang==='es'?'¿Dónde quieres ir?':'Where would you like to go?'}</div><div class="intro-choice-actions"><a class="choice-button" href="#/grid">${state.lang==='es'?'Grid':'Grid'}</a><a class="choice-button current-choice" data-current-track href="${trackUrl(getCurrent())}">${state.lang==='es'?'Tema actual':'Current track'}</a></div></div></div>`;
+    return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-choice" data-intro-choice hidden><div class="intro-choice-title">${state.lang==='es'?'¿Dónde quieres ir?':'Where would you like to go?'}</div><div class="intro-choice-actions"><a class="choice-button" href="#/grid">${state.lang==='es'?'Grid':'Grid'}</a><a class="choice-button" data-current-track href="${trackUrl(getCurrent())}">${state.lang==='es'?'Tema actual':'Current track'}</a></div></div></div>`;
   }
   async function load(){
     if(!supabase){ renderError('Configura config.js antes de usar la web.'); return; }
     const {data:session,error:sErr}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
     if(sErr){ renderError(sErr.message); return; }
     state.session=session;
+    previousSessionPosition=session.status==='finished' ? 0 : (session.current_position||0);
+    sessionInitialized=true;
     await refreshTracks();
     state.loading=false;
     await loadReactionCounts();
@@ -67,7 +72,14 @@
       const {data:session,error}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
       if(error || !session) return;
       const changed=!state.session || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
-      if(changed){ state.session=session; await refreshTracks(); await loadReactionCounts(); renderRoute(); }
+      if(changed){
+        const oldPosition=previousSessionPosition;
+        const newPosition=session.status==='finished' ? 0 : (session.current_position||0);
+        state.session=session;
+        previousSessionPosition=newPosition;
+        await refreshTracks(); await loadReactionCounts(); renderRoute();
+        maybePromptForSessionChange(oldPosition,newPosition);
+      }
     },1000);
   }
   async function loadReactionCounts(){
@@ -82,8 +94,14 @@
       if(x.client_id===clientId) liked[`track:${x.track_id}`]=true;
     });
     const {data:introLikes}=await supabase.from('likes').select('id,client_id').eq('target_type','intro');
+    const {data:comments}=trackIds.length
+      ? await supabase.from('comments').select('id,track_id').eq('target_type','track').in('track_id',trackIds)
+      : {data:[]};
+    const commentCounts={};
+    (comments||[]).forEach(x=>{ commentCounts[x.track_id]=(commentCounts[x.track_id]||0)+1; });
     if(introLikes?.some(x=>x.client_id===clientId)) liked['intro:']=true;
     state.counts.likes=counts;
+    state.counts.comments=commentCounts;
     state.counts.intro=(introLikes||[]).length;
     state.liked=liked;
   }
@@ -91,10 +109,14 @@
     if(realtimeChannel) supabase.removeChannel(realtimeChannel);
     realtimeChannel=supabase.channel(`session-${sessionSlug}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'session_state',filter:`slug=eq.${sessionSlug}`},async p=>{
+        const oldPosition=previousSessionPosition;
+        const newPosition=p.new?.status==='finished' ? 0 : (p.new?.current_position||0);
         state.session=p.new;
+        previousSessionPosition=newPosition;
         await refreshTracks();
         await loadReactionCounts();
         renderRoute();
+        if(sessionInitialized) maybePromptForSessionChange(oldPosition,newPosition);
       })
       .on('postgres_changes',{event:'*',schema:'public',table:'comments'},()=>renderRoute())
       .on('postgres_changes',{event:'*',schema:'public',table:'likes'},()=>renderRoute())
@@ -143,21 +165,41 @@
     };
     tick(); countdownTimer=setInterval(tick,1000);
   }
+  function fitIntroText(){
+    const el=document.querySelector('.intro-copy');
+    if(!el) return;
+    const isMobile=window.matchMedia('(max-width:700px)').matches;
+    if(!isMobile) return;
+    let size=29;
+    el.style.fontSize=size+'px';
+    const maxHeight=Math.max(260, Math.floor(window.innerHeight*0.46));
+    while(el.scrollHeight>maxHeight && size>19){
+      size-=1;
+      el.style.fontSize=size+'px';
+    }
+  }
   async function renderIntro(renderId){
     const intro=state.session||{};
     const comments=await commentsHtml('intro',null); const reactions=await reactionsHtml('intro',null);
     if(renderId !== renderSeq) return;
     view.innerHTML=`<section class="intro"><div class="intro-grid"><div class="hero-cover">${intro.intro_cover_url?`<img class="cover" src="${esc(intro.intro_cover_url)}" alt="">`:''}</div><div><div class="kicker">${state.lang==='es'?'Sesión de escucha':'Listening session'}</div><h1>${esc(text(intro,'intro_title')||intro.title||'Listening Session')}</h1><div class="intro-copy dropcap">${esc(text(intro,'intro_text'))}</div>${countdownHtml()}${introNextHtml()}${promoHtml()}<div class="reactions">${reactions}${comments}</div></div></div></section>`;
     startCountdown();
+    requestAnimationFrame(fitIntroText);
+  }
+  function gridReactionHtml(t){
+    const likes=state.counts.likes?.[t.id]||0;
+    const comments=state.counts.comments?.[t.id]||0;
+    return `<div class="tile-reactions"><span>♥ ${likes}</span><span>◌ ${comments}</span></div>`;
   }
   function renderGrid(){
-    const visible=state.tracks.filter(isVisible); const ended=state.session?.status==='finished';
+    const ended=state.session?.status==='finished';
+    const coverTile=`<div class="track-tile intro-tile"><a href="#/intro"><div class="tile-cover intro-tile-cover"><img class="cover" src="${esc(state.session?.intro_cover_url||'')}" alt=""></div><div class="tile-overlay"><span class="tile-number">INTRO</span><div class="tile-info">${esc(text(state.session||{},'intro_title')||state.session?.title||'Listening session')}</div></div></a></div>`;
     const tiles=state.tracks.map(t=>{
       const unlocked=isVisible(t); const current=!ended && t.position===getCurrent();
-      if(!unlocked) return `<div class="track-tile locked"><span class="tile-number">${String(t.position).padStart(2,'0')}</span><div class="lock">LOCKED</div></div>`;
-      return `<div class="track-tile"><a href="${trackUrl(t.position)}"><div class="tile-cover"><img src="${esc(t.cover_url)}" alt=""></div><div class="tile-overlay"><span class="tile-number">${String(t.position).padStart(2,'0')}</span>${current?'<span class="now-playing"><i></i><i></i><i></i><i></i></span>':''}<div class="tile-info">${esc(text(t,'artist'))}<small>${esc(text(t,'title'))}</small></div></div></a></div>`;
+      if(!unlocked) return `<div class="track-tile locked"><span class="tile-number">${String(t.position).padStart(2,'0')}</span></div>`;
+      return `<div class="track-tile ${current?'is-current':''}"><a href="${trackUrl(t.position)}"><div class="tile-cover"><img src="${esc(t.cover_url)}" alt=""></div><div class="tile-overlay"><span class="tile-number">${String(t.position).padStart(2,'0')}</span>${current?'<span class="now-playing"><i></i><i></i><i></i><i></i></span>':''}<div class="tile-info">${esc(text(t,'artist'))}<small>${esc(text(t,'title'))}</small></div>${gridReactionHtml(t)}</div></a></div>`;
     }).join('');
-    view.innerHTML=`<section><div class="grid-head"><div><div class="kicker">${ended?(state.lang==='es'?'Sesión terminada':'Session ended'):(state.lang==='es'?'Tracklist':'Tracklist')}</div><h2>Grid</h2></div><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-grid">${tiles}</div>${promoHtml()}</section>`;
+    view.innerHTML=`<section><div class="grid-head"><div><div class="kicker">${ended?(state.lang==='es'?'Sesión terminada':'Session ended'):(state.lang==='es'?'Tracklist':'Tracklist')}</div><h2>Grid</h2></div><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-grid">${coverTile}${tiles}</div>${promoHtml()}</section>`;
   }
   async function renderTrack(position,renderId){
     const t=state.tracks.find(x=>x.position===position);
@@ -166,7 +208,7 @@
     const prev=state.tracks.find(x=>x.position===position-1 && isVisible(x)); const next=state.tracks.find(x=>x.position===position+1 && isVisible(x));
     const comments=await commentsHtml('track',t.id); const reactions=await reactionsHtml('track',t.id);
     if(renderId !== renderSeq) return;
-    view.innerHTML=`<section class="track-page"><div class="track-topnav"><a class="underlink" href="#/grid">Grid</a><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-hero"><div class="track-cover"><img class="cover" src="${esc(t.cover_url)}" alt=""></div><div class="track-copy"><div class="kicker">${String(t.position).padStart(2,'0')}</div><div class="track-field artist-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20c.8-3.5 3-5.2 6.5-5.2s5.7 1.7 6.5 5.2"></path></svg></span><div class="artist">${esc(text(t,'artist'))}</div></div><div class="track-field title-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 17.5V5l10-2v12.5"></path><circle cx="6.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle></svg></span><h2>${esc(text(t,'title'))}</h2></div><div class="track-details"><div class="track-field album-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="2.1"></circle><circle cx="12" cy="12" r="5.2"></circle></svg></span><span>${esc(text(t,'album'))}</span></div>${t.label?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 7.5V4h3.5l13.5 13.5-3.5 3.5L3.5 7.5Z"></path><circle cx="7" cy="7" r="1.2"></circle></svg></span><span>${esc(t.label)}${t.year?' · '+esc(t.year):''}</span></div>`:t.year?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg></span><span>${esc(t.year)}</span></div>`:''}</div><div class="editorial dropcap">${esc(text(t,'editorial'))}</div>${reactions}<div class="comments">${comments}</div></div></div>${everyTenPromo(t.position)}<nav class="track-nav"><span>${prev?`<a href="${trackUrl(prev.position)}"><span class="arrow">←</span> ${state.lang==='es'?'Anterior':'Previous'}</a>`:''}</span><a href="#/grid">Grid</a><a href="#/intro">${state.lang==='es'?'Inicio':'Home'}</a><a href="${currentTrack()?trackUrl(currentTrack().position):'#'}" class="current-link">${state.lang==='es'?'Actual':'Current'}</a><span>${next?`<a href="${trackUrl(next.position)}">${state.lang==='es'?'Siguiente':'Next'} <span class="arrow">→</span></a>`:''}</span></nav></section>`;
+    view.innerHTML=`<section class="track-page"><div class="track-topnav"><a class="underlink" href="#/grid">Grid</a><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-hero"><div class="track-cover"><img class="cover" src="${esc(t.cover_url)}" alt=""></div><div class="track-copy"><div class="kicker">${String(t.position).padStart(2,'0')}</div><div class="track-field artist-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20c.8-3.5 3-5.2 6.5-5.2s5.7 1.7 6.5 5.2"></path></svg></span><div class="artist">${esc(text(t,'artist'))}</div></div><div class="track-field title-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 17.5V5l10-2v12.5"></path><circle cx="6.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle></svg></span><h2>${esc(text(t,'title'))}</h2></div><div class="track-details"><div class="track-field album-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="2.1"></circle><circle cx="12" cy="12" r="5.2"></circle></svg></span><span>${esc(text(t,'album'))}</span></div>${t.label?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 7.5V4h3.5l13.5 13.5-3.5 3.5L3.5 7.5Z"></path><circle cx="7" cy="7" r="1.2"></circle></svg></span><span>${esc(t.label)}${t.year?' · '+esc(t.year):''}</span></div>`:t.year?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg></span><span>${esc(t.year)}</span></div>`:''}</div><div class="editorial dropcap">${esc(text(t,'editorial'))}</div>${reactions}<div class="comments">${comments}</div></div></div>${everyTenPromo(t.position)}<nav class="track-nav"><a class="nav-button ${prev?'':'is-disabled'}" ${prev?`href="${trackUrl(prev.position)}"`:''}><span class="arrow">←</span> ${state.lang==='es'?'Anterior':'Previous'}</a><a class="nav-button" href="#/intro">${state.lang==='es'?'Inicio':'Home'}</a><a class="nav-button" href="#/grid">Grid</a><a class="nav-button ${currentTrack()?'':'is-disabled'}" ${currentTrack()?`href="${trackUrl(currentTrack().position)}"`:''}>${state.lang==='es'?'Actual':'Current'}</a><a class="nav-button ${next?'':'is-disabled'}" ${next?`href="${trackUrl(next.position)}"`:''}>${state.lang==='es'?'Siguiente':'Next'} <span class="arrow">→</span></a></nav></section>`;
     bindForms();
   }
   function renderEnd(){
@@ -203,6 +245,25 @@
     await renderRoute();
   }
 
+  function maybePromptForSessionChange(oldPosition,newPosition){
+    if(!sessionInitialized || !state.session || state.session.status!=='live') return;
+    if(!newPosition || newPosition===oldPosition) return;
+    showSessionChangePrompt(newPosition);
+  }
+  function showSessionChangePrompt(position){
+    const track=state.tracks.find(t=>t.position===position);
+    if(!track) return;
+    const existing=document.querySelector('.session-change-prompt');
+    if(existing) existing.remove();
+    const el=document.createElement('div');
+    el.className='session-change-prompt';
+    el.innerHTML=`<div class="session-change-card"><div class="session-change-kicker">${state.lang==='es'?'La sesión continúa':'The session continues'}</div><div class="session-change-title">${state.lang==='es'?'Ahora suena':'Now playing'}: <strong>${esc(text(track,'artist'))} — ${esc(text(track,'title'))}</strong></div><div class="session-change-question">${state.lang==='es'?'¿Quieres ir a la canción actual o quedarte donde estás?':'Would you like to go to the current track or stay where you are?'}</div><div class="session-change-actions"><button data-stay>${state.lang==='es'?'Quedarme aquí':'Stay here'}</button><a href="${trackUrl(position)}" data-go-current>${state.lang==='es'?'Ir a canción actual':'Go to current track'}</a></div></div>`;
+    document.body.appendChild(el);
+    el.querySelector('[data-stay]').onclick=()=>el.remove();
+    el.querySelector('[data-go-current]').onclick=()=>{ el.remove(); setTimeout(()=>window.scrollTo({top:0,left:0,behavior:'auto'}),40); };
+    clearTimeout(promptTimer);
+    promptTimer=setTimeout(()=>el.remove(),30000);
+  }
   function bindForms(){
     document.querySelectorAll('[data-current-track]').forEach(a=>{ a.onclick=()=>{ setTimeout(()=>window.scrollTo({top:0,left:0,behavior:'auto'}),50); }; });
     document.querySelectorAll('[data-intro-next]').forEach(b=>{
@@ -258,5 +319,6 @@
 
   langBtn.onclick=()=>{state.lang=state.lang==='es'?'en':'es';localStorage.setItem('ls_lang',state.lang);renderRoute();};
   window.addEventListener('hashchange',async()=>{ await renderRoute(); window.scrollTo({top:0,left:0,behavior:'auto'}); });
+  window.addEventListener('resize',()=>{ if(location.hash==='#/intro' || !location.hash) fitIntroText(); });
   load();
 })();

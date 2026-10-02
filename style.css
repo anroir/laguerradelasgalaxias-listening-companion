@@ -250,3 +250,56 @@ textarea { min-height:44px; resize:vertical; }
 .next-main.is-started:hover { background: rgba(70, 140, 80, .14); }
 
 .admin-controls [data-action=reset] { border-color: #555; background: transparent; }
+
+/* Final interaction / grid refinements */
+.intro-copy { font-size: clamp(19px, 1.55vw, 23px); }
+.choice-button { min-width: 150px; min-height: 52px; display:inline-flex; align-items:center; justify-content:center; padding:15px 22px; font-size:13px; letter-spacing:.04em; }
+.current-choice { border-color: var(--line); color: inherit; }
+
+.track-grid { grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; }
+.track-tile.locked { background:#000; }
+.track-tile.locked .tile-number { color:#555; }
+.intro-tile { border:2px solid #666; }
+.intro-tile .tile-overlay { background:linear-gradient(to bottom,rgba(0,0,0,.38),transparent 35%,rgba(0,0,0,.78)); }
+.tile-reactions { display:flex; gap:12px; align-items:center; font-family:var(--mono); font-size:9px; color:#d0cbc1; }
+.tile-reactions span { white-space:nowrap; }
+.track-tile.is-current { outline:1px solid rgba(238,233,223,.55); outline-offset:-1px; }
+
+.track-nav { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; border-top:0; margin-top:55px; padding-top:0; }
+.track-nav .nav-button { min-height:44px; border:1px solid #4a4a4a; display:flex; align-items:center; justify-content:center; padding:10px 12px; font-size:11px; letter-spacing:.04em; text-align:center; background:transparent; transition:background .2s,border-color .2s,color .2s; }
+.track-nav .nav-button:hover:not(.is-disabled) { background:rgba(255,255,255,.05); border-color:#777; }
+.track-nav .nav-button.is-disabled { color:#4b4b4b; border-color:#242424; cursor:default; pointer-events:none; }
+.track-nav .arrow { font-size:16px; margin:0 4px; }
+
+.session-change-prompt { position:fixed; left:0; right:0; bottom:22px; z-index:50; display:flex; justify-content:center; padding:0 16px; pointer-events:none; }
+.session-change-card { width:min(720px,100%); border:1px solid #555; background:rgba(8,8,8,.97); box-shadow:0 12px 45px rgba(0,0,0,.45); padding:20px 22px; pointer-events:auto; }
+.session-change-kicker { color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:.16em; margin-bottom:9px; }
+.session-change-title { font-family:var(--serif); font-size:20px; line-height:1.15; }
+.session-change-question { color:#bbb5ac; font-size:12px; margin-top:10px; }
+.session-change-actions { display:flex; gap:8px; margin-top:16px; }
+.session-change-actions button,
+.session-change-actions a { flex:1; min-height:42px; display:flex; align-items:center; justify-content:center; border:1px solid #555; background:transparent; color:inherit; padding:9px 12px; font-size:11px; cursor:pointer; text-decoration:none; }
+.session-change-actions button:hover,
+.session-change-actions a:hover { background:rgba(255,255,255,.05); }
+
+@media (max-width:700px) {
+  .intro-copy { font-size:clamp(19px, 6vw, 29px); }
+  .track-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .tile-overlay { padding:8px; }
+  .tile-info { font-size:11px; }
+  .tile-info small { font-size:7px; margin-top:3px; }
+  .tile-reactions { gap:5px; font-size:7px; }
+  .now-playing { right:7px; top:7px; }
+  .track-nav { grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; }
+  .track-nav .nav-button { min-height:40px; padding:7px 4px; font-size:9px; }
+  .track-nav .arrow { display:none; }
+  .session-change-prompt { bottom:10px; padding:0 10px; }
+  .session-change-card { padding:16px; }
+  .session-change-title { font-size:17px; }
+  .session-change-actions { gap:6px; }
+  .session-change-actions button,
+  .session-change-actions a { font-size:10px; }
+}
+@media (max-width:800px) {
+  .track-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+}

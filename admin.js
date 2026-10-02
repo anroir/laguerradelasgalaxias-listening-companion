@@ -1,7 +1,7 @@
 (() => {
   const cfg=window.APP_CONFIG||{}; const view=document.getElementById('admin-view'); const countEl=document.getElementById('admin-listeners');
   const sb=window.supabase?.createClient(cfg.SUPABASE_URL||'',cfg.SUPABASE_ANON_KEY||''); const slug=cfg.SESSION_SLUG||'main';
-  let session=null,tracks=[],channel=null;
+  let session=null,tracks=[],channel=null,countdownTimer=null;
   function esc(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function t(x,f){return x[`${f}_en`]||x[`${f}_es`]||'';}
   async function init(){ if(!sb){error('Configura config.js.');return;} const {data:{session:s}}=await sb.auth.getSession(); if(!s){renderLogin();return;} await load(); subscribe(); presence(); }
@@ -16,6 +16,16 @@
     const d=new Date(iso); if(Number.isNaN(d.getTime())) return '';
     const pad=n=>String(n).padStart(2,'0');
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function startCountdownWatcher(){
+    if(countdownTimer) clearInterval(countdownTimer);
+    countdownTimer=setInterval(async()=>{
+      if(!session?.countdown_enabled || !session?.countdown_target_at || session.status!=='draft') return;
+      const target=new Date(session.countdown_target_at).getTime();
+      if(Number.isNaN(target) || Date.now()<target) return;
+      const {error}=await sb.from('session_state').update({status:'live',current_position:1,countdown_enabled:false,countdown_target_at:null}).eq('slug',slug).eq('status','draft');
+      if(!error){ session={...session,status:'live',current_position:1,countdown_enabled:false,countdown_target_at:null}; render(); }
+    },1000);
   }
   function render(){
     const current=tracks.find(x=>x.position===session.current_position);
@@ -38,4 +48,5 @@
     };
   }
   init();
+  startCountdownWatcher();
 })();
