@@ -303,3 +303,112 @@ textarea { min-height:44px; resize:vertical; }
 @media (max-width:800px) {
   .track-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
 }
+
+
+/* 2026-10 visual pass */
+html, body { overflow-x:hidden; }
+.topbar { height:64px; padding:0 28px; }
+.brand { font-size:12px; }
+.top-actions { gap:26px; }
+.listeners { font-size:14px; }
+.text-button { font-size:13px; padding:7px 10px; border:1px solid #3b3b3b; }
+.view { width:calc(100% - 56px); padding-top:52px; }
+.kicker { font-size:12px; margin-bottom:18px; }
+.intro-grid h1 { font-size:clamp(52px,5vw,76px); }
+.intro-copy, .editorial { font-size:26px; line-height:1.5; text-align:justify; hyphens:auto; }
+.intro-copy { max-width:780px; }
+.editorial { max-width:780px; }
+.links { gap:16px; }
+.underlink { font-size:15px; padding:5px 0; }
+.icon-link { display:inline-flex; align-items:center; gap:9px; border-bottom:1px solid #555; }
+.ui-icon { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.35; stroke-linecap:round; stroke-linejoin:round; flex:0 0 18px; }
+.link-icon { display:inline-flex; }
+.link-icon .ui-icon { width:17px; height:17px; }
+.promo { padding:25px 0; }
+.promo small { font-size:11px; }
+.promo .links { margin-top:0; padding-top:0; border-top:0; }
+.like-button { font-size:15px; min-width:112px; padding:11px 14px; }
+.comments { margin-top:30px; }
+.comment-list { gap:15px; }
+.comment { font-size:16px; padding-bottom:13px; line-height:1.45; }
+.comment strong { font-size:14px; margin-right:10px; }
+.comment-body { font-weight:700; }
+.comment-form input, .comment-form textarea { font-size:14px; }
+.comment-form .submit { font-size:14px; padding:11px 18px; }
+
+/* Keep the 4 x 10 visual grid on every viewport; undiscovered tracks remain black. */
+.track-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.track-tile.locked { background:#000; }
+.tile-reactions { font-size:10px; }
+.grid-head h2 { font-size:48px; }
+.grid-head .icon-link { font-size:15px; }
+
+/* Track pages: slightly smaller than the previous version, with the same editorial text scale as the intro. */
+.track-page { max-width:960px; }
+.track-hero { gap:54px; }
+.track-copy h2 { font-size:clamp(43px,5.4vw,81px); }
+.artist { font-size:15px; }
+.track-details { font-size:10.5px; }
+.track-copy .editorial { margin-top:36px; }
+
+.track-nav { gap:10px; margin-top:48px; padding-top:18px; }
+.track-nav .nav-button { min-height:50px; border:1px solid #505050; display:flex; align-items:center; justify-content:center; gap:8px; padding:9px 12px; font-size:12px; letter-spacing:.02em; background:#0b0b0b; }
+.track-nav .nav-button:hover:not(.is-disabled) { background:#141414; border-color:#8a8a8a; }
+.track-nav .nav-button.is-disabled { color:#4b4b4b; border-color:#292929; background:#070707; opacity:.9; }
+.track-nav .ui-icon { width:17px; height:17px; }
+.track-topnav { font-size:14px; }
+
+.choice-button { min-height:54px !important; font-size:14px !important; gap:9px; }
+.choice-button .ui-icon { width:19px; height:19px; }
+
+/* Session-change prompt: integrated in the page, centered in the viewport. */
+.session-change-prompt { top:0; bottom:0; align-items:center; padding:24px; background:rgba(0,0,0,.18); }
+.session-change-card { width:min(720px,100%); padding:28px 30px; }
+.session-change-title { font-size:22px; }
+.session-change-question { font-size:14px; }
+.session-change-actions button, .session-change-actions a { min-height:48px; font-size:13px; }
+
+@media (max-width:800px) {
+  .topbar { padding:0 14px; }
+  .top-actions { gap:10px; }
+  .listeners { font-size:12px; }
+  .text-button { font-size:12px; padding:6px 7px; }
+  .view { width:calc(100% - 24px); padding-top:28px; }
+  .intro-grid { gap:24px; }
+  .intro-grid h1 { font-size:clamp(42px,12vw,64px); margin-bottom:24px; }
+  .intro-copy, .editorial { font-size:26px; line-height:1.46; }
+  .underlink { font-size:14px; }
+  .promo .links { gap:14px; }
+  .track-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .tile-overlay { padding:7px; }
+  .tile-info { font-size:10px; }
+  .tile-info small { font-size:7px; margin-top:3px; }
+  .tile-reactions { font-size:7px; gap:4px; }
+  .grid-head h2 { font-size:36px; }
+  .track-hero { gap:28px; }
+  .track-copy h2 { font-size:clamp(40px,10vw,60px); }
+  .track-page { max-width:none; }
+  .track-nav { gap:4px; }
+  .track-nav .nav-button { min-height:48px; padding:7px 3px; font-size:9px; flex-direction:column; gap:3px; }
+  .track-nav .ui-icon { width:16px; height:16px; }
+  .track-topnav { font-size:13px; }
+  .comment { font-size:15px; }
+  .comment strong { font-size:13px; }
+  .session-change-prompt { padding:14px; }
+  .session-change-card { padding:22px 18px; }
+}
+
+@media (max-width:430px) {
+  .intro-copy, .editorial { font-size:24px; }
+  .grid-head h2 { font-size:32px; }
+  .tile-info { font-size:9px; }
+  .tile-info small { font-size:6.5px; }
+  .tile-reactions { font-size:6.5px; }
+  .track-nav .nav-button { font-size:8px; }
+}
+
+/* Admin session selector */
+.admin-session-select { border:1px solid var(--line); padding:18px 20px; display:grid; gap:9px; }
+.admin-session-select label { display:grid; gap:8px; }
+.admin-session-select .kicker { margin:0; }
+.admin-session-select select { background:#0b0b0b; color:var(--fg); border:1px solid #555; padding:12px 13px; font-size:14px; }

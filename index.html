@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -14,18 +14,13 @@
     <header class="topbar">
       <a href="#/intro" class="brand" aria-label="Inicio">LISTENING SESSION</a>
       <div class="top-actions">
-        <span id="listener-count" class="listeners" aria-live="polite">0 listeners</span>
-        <button id="lang-toggle" class="text-button" type="button">ES / EN</button>
+        <span id="listener-count" class="listeners" aria-live="polite">0 oyentes</span>
+        <button id="lang-toggle" class="text-button" type="button" aria-label="Cambiar idioma">🇪🇸 ES&nbsp; / &nbsp;🇬🇧 EN</button>
       </div>
     </header>
-
     <main id="view" class="view" aria-live="polite"></main>
-
-    <footer class="footer">
-      <span id="footer-status"></span>
-    </footer>
+    <footer class="footer"><span id="footer-status"></span></footer>
   </div>
-
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

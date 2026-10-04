@@ -4,7 +4,7 @@
   const countEl = document.getElementById('listener-count');
   const langBtn = document.getElementById('lang-toggle');
   const supabase = window.supabase?.createClient(cfg.SUPABASE_URL || '', cfg.SUPABASE_ANON_KEY || '');
-  const sessionSlug = cfg.SESSION_SLUG || 'main';
+  const fallbackSessionSlug = cfg.SESSION_SLUG || 'presentation';
   let state = { session:null, tracks:[], lang: getLang(), loading:true, counts:{}, liked:{} };
   let presenceChannel = null;
   let realtimeChannel = null;
@@ -30,8 +30,20 @@
   function trackUrl(n){ return `#/track/${n}`; }
   function getCurrent(){ return state.session?.status==='finished' ? null : state.session?.current_position || 0; }
   function isVisible(t){ return state.session?.status==='finished' || t.position <= getCurrent(); }
+  function iconSvg(name){
+    const paths={
+      home:'<path d="M3.5 10.5 12 3l8.5 7.5"></path><path d="M5.5 9.5V20h13V9.5"></path><path d="M9.5 20v-6h5v6"></path>',
+      grid:'<rect x="4" y="4" width="6" height="6"></rect><rect x="14" y="4" width="6" height="6"></rect><rect x="4" y="14" width="6" height="6"></rect><rect x="14" y="14" width="6" height="6"></rect>',
+      prev:'<path d="M19 12H5"></path><path d="m11 6-6 6 6 6"></path>',
+      next:'<path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path>',
+      current:'<circle cx="12" cy="12" r="7.5"></circle><circle cx="12" cy="12" r="2"></circle>',
+      music:'<path d="M9 17.5V5l10-2v12.5"></path><circle cx="6.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle>',
+      link:'<path d="M9.5 14.5 14.5 9.5"></path><path d="M7.2 17.8 5.5 19.5a3.2 3.2 0 0 1-4.5-4.5l3.8-3.8a3.2 3.2 0 0 1 4.5 0"></path><path d="M16.8 6.2 18.5 4.5a3.2 3.2 0 1 1 4.5 4.5l-3.8 3.8a3.2 3.2 0 0 1-4.5 0"></path>'
+    };
+    return `<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name]||''}</svg>`;
+  }
   function promoHtml(){
-    return `<div class="promo"><small>${state.lang==='es'?'Enlaces':'Links'}</small><div class="links"><a class="underlink" href="${esc(cfg.SPOTIFY_PLAYLIST_URL)}" target="_blank" rel="noopener">Spotify playlist ↗</a><a class="underlink" href="${esc(cfg.LINKTREE_URL)}" target="_blank" rel="noopener">Linktree ↗</a></div></div>`;
+    return `<div class="promo"><small>${state.lang==='es'?'Enlaces':'Links'}</small><div class="links"><a class="underlink icon-link" href="${esc(cfg.SPOTIFY_PLAYLIST_URL)}" target="_blank" rel="noopener"><span class="link-icon">${iconSvg('music')}</span><span>Spotify playlist ↗</span></a><a class="underlink icon-link" href="${esc(cfg.LINKTREE_URL)}" target="_blank" rel="noopener"><span class="link-icon">${iconSvg('link')}</span><span>Linktree ↗</span></a></div></div>`;
   }
   function everyTenPromo(position){ return position % 10 === 0 ? promoHtml() : ''; }
   function currentTrack(){
@@ -45,14 +57,13 @@
     if(!started){
       return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-next-message" data-intro-message hidden>${message}</div></div>`;
     }
-    return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-choice" data-intro-choice hidden><div class="intro-choice-title">${state.lang==='es'?'¿Dónde quieres ir?':'Where would you like to go?'}</div><div class="intro-choice-actions"><a class="choice-button" href="#/grid">${state.lang==='es'?'Grid':'Grid'}</a><a class="choice-button" data-current-track href="${trackUrl(getCurrent())}">${state.lang==='es'?'Tema actual':'Current track'}</a></div></div></div>`;
+    return `<div class="intro-next"><button class="next-main ${started?'is-started':''}" data-intro-next>${label}</button><div class="intro-choice" data-intro-choice hidden><div class="intro-choice-title">${state.lang==='es'?'¿Dónde quieres ir?':'Where would you like to go?'}</div><div class="intro-choice-actions"><a class="choice-button" href="#/grid">${iconSvg('grid')}<span>${state.lang==='es'?'Grid':'Grid'}</span></a><a class="choice-button" data-current-track href="${trackUrl(getCurrent())}">${iconSvg('current')}<span>${state.lang==='es'?'Tema actual':'Current track'}</span></a></div></div></div>`;
   }
   async function load(){
     if(!supabase){ renderError('Configura config.js antes de usar la web.'); return; }
-    const {data:session,error:sErr}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
-    if(sErr){ renderError(sErr.message); return; }
-    state.session=session;
-    previousSessionPosition=session.status==='finished' ? 0 : (session.current_position||0);
+    const {data:session,error:sErr}=await supabase.from('session_state').select('*').eq('is_active',true).single();
+    if(sErr || !session){ const fallback=await supabase.from('session_state').select('*').eq('slug',fallbackSessionSlug).single(); if(fallback.error){ renderError((sErr||fallback.error).message); return; } state.session=fallback.data; } else state.session=session;
+    previousSessionPosition=state.session.status==='finished' ? 0 : (state.session.current_position||0);
     sessionInitialized=true;
     await refreshTracks();
     state.loading=false;
@@ -60,7 +71,7 @@
     subscribeRealtime(); subscribePresence(); startSessionPolling(); renderRoute();
   }
   async function refreshTracks(){
-    const {data:tracks,error}=await supabase.from('tracks').select('*').order('position');
+    const {data:tracks,error}=await supabase.from('tracks').select('*').eq('session_slug',state.session?.slug||fallbackSessionSlug).order('position');
     if(error){ console.error('Track refresh error:', error); return false; }
     state.tracks=tracks||[];
     return true;
@@ -69,15 +80,17 @@
     if(sessionPollTimer) clearInterval(sessionPollTimer);
     sessionPollTimer=setInterval(async()=>{
       if(document.visibilityState==='hidden') return;
-      const {data:session,error}=await supabase.from('session_state').select('*').eq('slug',sessionSlug).single();
+      const {data:session,error}=await supabase.from('session_state').select('*').eq('is_active',true).single();
       if(error || !session) return;
-      const changed=!state.session || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
+      const changed=!state.session || session.slug!==state.session.slug || session.current_position!==state.session.current_position || session.status!==state.session.status || session.countdown_enabled!==state.session.countdown_enabled || session.countdown_target_at!==state.session.countdown_target_at;
       if(changed){
         const oldPosition=previousSessionPosition;
+        const oldSlug=state.session?.slug;
         const newPosition=session.status==='finished' ? 0 : (session.current_position||0);
         state.session=session;
         previousSessionPosition=newPosition;
-        await refreshTracks(); await loadReactionCounts(); renderRoute();
+        if(oldSlug!==session.slug) subscribePresence();
+        await refreshTracks(); await loadReactionCounts(); await renderRoute();
         maybePromptForSessionChange(oldPosition,newPosition);
       }
     },1000);
@@ -87,15 +100,15 @@
     const counts={};
     const liked={};
     const {data:trackLikes}=trackIds.length
-      ? await supabase.from('likes').select('id,track_id,client_id').eq('target_type','track').in('track_id',trackIds)
+      ? await supabase.from('likes').select('id,track_id,client_id').eq('target_type','track').eq('session_slug',state.session?.slug||fallbackSessionSlug).in('track_id',trackIds)
       : {data:[]};
     (trackLikes||[]).forEach(x=>{
       counts[x.track_id]=(counts[x.track_id]||0)+1;
       if(x.client_id===clientId) liked[`track:${x.track_id}`]=true;
     });
-    const {data:introLikes}=await supabase.from('likes').select('id,client_id').eq('target_type','intro');
+    const {data:introLikes}=await supabase.from('likes').select('id,client_id').eq('target_type','intro').eq('session_slug',state.session?.slug||fallbackSessionSlug);
     const {data:comments}=trackIds.length
-      ? await supabase.from('comments').select('id,track_id').eq('target_type','track').in('track_id',trackIds)
+      ? await supabase.from('comments').select('id,track_id').eq('target_type','track').eq('session_slug',state.session?.slug||fallbackSessionSlug).in('track_id',trackIds)
       : {data:[]};
     const commentCounts={};
     (comments||[]).forEach(x=>{ commentCounts[x.track_id]=(commentCounts[x.track_id]||0)+1; });
@@ -107,15 +120,21 @@
   }
   function subscribeRealtime(){
     if(realtimeChannel) supabase.removeChannel(realtimeChannel);
-    realtimeChannel=supabase.channel(`session-${sessionSlug}`)
-      .on('postgres_changes',{event:'*',schema:'public',table:'session_state',filter:`slug=eq.${sessionSlug}`},async p=>{
+    realtimeChannel=supabase.channel('session-live-updates')
+      .on('postgres_changes',{event:'*',schema:'public',table:'session_state'},async ()=>{
         const oldPosition=previousSessionPosition;
-        const newPosition=p.new?.status==='finished' ? 0 : (p.new?.current_position||0);
-        state.session=p.new;
+        const {data:active}=await supabase.from('session_state').select('*').eq('is_active',true).single();
+        if(!active) return;
+        const newPosition=active.status==='finished' ? 0 : (active.current_position||0);
+        const changed=!state.session || active.slug!==state.session.slug || active.current_position!==state.session.current_position || active.status!==state.session.status;
+        if(!changed) return;
+        const oldSlug=state.session?.slug;
+        state.session=active;
         previousSessionPosition=newPosition;
+        if(oldSlug!==active.slug) subscribePresence();
         await refreshTracks();
         await loadReactionCounts();
-        renderRoute();
+        await renderRoute();
         if(sessionInitialized) maybePromptForSessionChange(oldPosition,newPosition);
       })
       .on('postgres_changes',{event:'*',schema:'public',table:'comments'},()=>renderRoute())
@@ -124,13 +143,14 @@
   }
   function subscribePresence(){
     if(presenceChannel) supabase.removeChannel(presenceChannel);
-    presenceChannel=supabase.channel(`listeners-${sessionSlug}`,{config:{presence:{key:clientId}}});
+    presenceChannel=supabase.channel(`listeners-${state.session?.slug||fallbackSessionSlug}`,{config:{presence:{key:clientId}}});
     presenceChannel.on('presence',{event:'sync'},()=>updatePresenceCount()).subscribe(async status=>{ if(status==='SUBSCRIBED'){ await presenceChannel.track({online_at:new Date().toISOString()}); updatePresenceCount(); }});
   }
   function updatePresenceCount(){
     const statePresence=presenceChannel?.presenceState?.()||{}; const n=Object.keys(statePresence).length; countEl.textContent=formatListeners(n); }
   async function commentsFor(targetType,trackId){
     let q=supabase.from('comments').select('*').eq('target_type',targetType).order('created_at',{ascending:true}).limit(50);
+    q=q.eq('session_slug',state.session?.slug||fallbackSessionSlug);
     q=trackId ? q.eq('track_id',trackId) : q.is('track_id',null);
     const {data}=await q; return data||[];
   }
@@ -143,7 +163,7 @@
   }
   async function commentsHtml(targetType,trackId){
     const cs=await commentsFor(targetType,trackId);
-    return `<div class="comments"><div class="comment-list">${cs.map(c=>`<div class="comment"><strong>${esc(c.name)}</strong>${esc(c.body)}</div>`).join('')}</div><form class="comment-form" data-comment-form data-target="${targetType}" data-track="${trackId||''}"><input name="name" maxlength="60" required placeholder="${state.lang==='es'?'Nombre':'Name'}"><textarea name="body" maxlength="500" required placeholder="${state.lang==='es'?'Comentario':'Comment'}"></textarea><button class="submit" type="submit">${state.lang==='es'?'Enviar':'Send'}</button></form></div>`;
+    return `<div class="comments"><div class="comment-list">${cs.map(c=>`<div class="comment"><strong>${esc(c.name)}</strong><span class="comment-body">${esc(c.body)}</span></div>`).join('')}</div><form class="comment-form" data-comment-form data-target="${targetType}" data-track="${trackId||''}"><input name="name" maxlength="60" required placeholder="${state.lang==='es'?'Nombre':'Name'}"><textarea name="body" maxlength="500" required placeholder="${state.lang==='es'?'Comentario':'Comment'}"></textarea><button class="submit" type="submit">${state.lang==='es'?'Enviar':'Send'}</button></form></div>`;
   }
   function countdownHtml(){
     if(!state.session?.countdown_enabled || !state.session?.countdown_target_at) return '';
@@ -168,12 +188,17 @@
   function fitIntroText(){
     const el=document.querySelector('.intro-copy');
     if(!el) return;
-    const isMobile=window.matchMedia('(max-width:700px)').matches;
-    if(!isMobile) return;
-    let size=29;
+    const minSize=window.innerWidth<=430 ? 20 : (window.innerWidth<=800 ? 22 : 24);
+    let size=26;
     el.style.fontSize=size+'px';
-    const maxHeight=Math.max(260, Math.floor(window.innerHeight*0.46));
-    while(el.scrollHeight>maxHeight && size>19){
+    // First make sure the copy never creates horizontal overflow.
+    while(el.scrollWidth > el.clientWidth + 1 && size>minSize){
+      size-=1;
+      el.style.fontSize=size+'px';
+    }
+    // On compact screens, gently reduce the copy if the opening composition becomes too tall.
+    const available=Math.max(300, window.innerHeight - (window.innerWidth<=800 ? 250 : 190));
+    while(el.scrollHeight > available && size>minSize){
       size-=1;
       el.style.fontSize=size+'px';
     }
@@ -199,7 +224,7 @@
       if(!unlocked) return `<div class="track-tile locked"><span class="tile-number">${String(t.position).padStart(2,'0')}</span></div>`;
       return `<div class="track-tile ${current?'is-current':''}"><a href="${trackUrl(t.position)}"><div class="tile-cover"><img src="${esc(t.cover_url)}" alt=""></div><div class="tile-overlay"><span class="tile-number">${String(t.position).padStart(2,'0')}</span>${current?'<span class="now-playing"><i></i><i></i><i></i><i></i></span>':''}<div class="tile-info">${esc(text(t,'artist'))}<small>${esc(text(t,'title'))}</small></div>${gridReactionHtml(t)}</div></a></div>`;
     }).join('');
-    view.innerHTML=`<section><div class="grid-head"><div><div class="kicker">${ended?(state.lang==='es'?'Sesión terminada':'Session ended'):(state.lang==='es'?'Tracklist':'Tracklist')}</div><h2>Grid</h2></div><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-grid">${coverTile}${tiles}</div>${promoHtml()}</section>`;
+    view.innerHTML=`<section><div class="grid-head"><div><div class="kicker">${ended?(state.lang==='es'?'Sesión terminada':'Session ended'):(state.lang==='es'?'Tracklist':'Tracklist')}</div><h2>Grid</h2></div><a class="icon-link" href="#/intro">${iconSvg('home')}<span>${state.lang==='es'?'Inicio':'Intro'}</span></a></div><div class="track-grid">${coverTile}${tiles}</div>${promoHtml()}</section>`;
   }
   async function renderTrack(position,renderId){
     const t=state.tracks.find(x=>x.position===position);
@@ -208,11 +233,11 @@
     const prev=state.tracks.find(x=>x.position===position-1 && isVisible(x)); const next=state.tracks.find(x=>x.position===position+1 && isVisible(x));
     const comments=await commentsHtml('track',t.id); const reactions=await reactionsHtml('track',t.id);
     if(renderId !== renderSeq) return;
-    view.innerHTML=`<section class="track-page"><div class="track-topnav"><a class="underlink" href="#/grid">Grid</a><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-hero"><div class="track-cover"><img class="cover" src="${esc(t.cover_url)}" alt=""></div><div class="track-copy"><div class="kicker">${String(t.position).padStart(2,'0')}</div><div class="track-field artist-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20c.8-3.5 3-5.2 6.5-5.2s5.7 1.7 6.5 5.2"></path></svg></span><div class="artist">${esc(text(t,'artist'))}</div></div><div class="track-field title-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 17.5V5l10-2v12.5"></path><circle cx="6.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle></svg></span><h2>${esc(text(t,'title'))}</h2></div><div class="track-details"><div class="track-field album-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="2.1"></circle><circle cx="12" cy="12" r="5.2"></circle></svg></span><span>${esc(text(t,'album'))}</span></div>${t.label?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 7.5V4h3.5l13.5 13.5-3.5 3.5L3.5 7.5Z"></path><circle cx="7" cy="7" r="1.2"></circle></svg></span><span>${esc(t.label)}${t.year?' · '+esc(t.year):''}</span></div>`:t.year?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg></span><span>${esc(t.year)}</span></div>`:''}</div><div class="editorial dropcap">${esc(text(t,'editorial'))}</div>${reactions}<div class="comments">${comments}</div></div></div>${everyTenPromo(t.position)}<nav class="track-nav"><a class="nav-button ${prev?'':'is-disabled'}" ${prev?`href="${trackUrl(prev.position)}"`:''}><span class="arrow">←</span> ${state.lang==='es'?'Anterior':'Previous'}</a><a class="nav-button" href="#/intro">${state.lang==='es'?'Inicio':'Home'}</a><a class="nav-button" href="#/grid">Grid</a><a class="nav-button ${currentTrack()?'':'is-disabled'}" ${currentTrack()?`href="${trackUrl(currentTrack().position)}"`:''}>${state.lang==='es'?'Actual':'Current'}</a><a class="nav-button ${next?'':'is-disabled'}" ${next?`href="${trackUrl(next.position)}"`:''}>${state.lang==='es'?'Siguiente':'Next'} <span class="arrow">→</span></a></nav></section>`;
+    view.innerHTML=`<section class="track-page"><div class="track-topnav"><a class="underlink" href="#/grid">Grid</a><a class="underlink" href="#/intro">${state.lang==='es'?'Inicio':'Intro'}</a></div><div class="track-hero"><div class="track-cover"><img class="cover" src="${esc(t.cover_url)}" alt=""></div><div class="track-copy"><div class="kicker">${String(t.position).padStart(2,'0')}</div><div class="track-field artist-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20c.8-3.5 3-5.2 6.5-5.2s5.7 1.7 6.5 5.2"></path></svg></span><div class="artist">${esc(text(t,'artist'))}</div></div><div class="track-field title-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 17.5V5l10-2v12.5"></path><circle cx="6.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle></svg></span><h2>${esc(text(t,'title'))}</h2></div><div class="track-details"><div class="track-field album-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="2.1"></circle><circle cx="12" cy="12" r="5.2"></circle></svg></span><span>${esc(text(t,'album'))}</span></div>${t.label?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 7.5V4h3.5l13.5 13.5-3.5 3.5L3.5 7.5Z"></path><circle cx="7" cy="7" r="1.2"></circle></svg></span><span>${esc(t.label)}${t.year?' · '+esc(t.year):''}</span></div>`:t.year?`<div class="track-field label-field"><span class="track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg></span><span>${esc(t.year)}</span></div>`:''}</div><div class="editorial dropcap">${esc(text(t,'editorial'))}</div>${reactions}<div class="comments">${comments}</div></div></div>${everyTenPromo(t.position)}<nav class="track-nav"><a class="nav-button ${prev?'':'is-disabled'}" ${prev?`href="${trackUrl(prev.position)}"`:''}>${iconSvg('prev')}<span>${state.lang==='es'?'Anterior':'Previous'}</span></a><a class="nav-button" href="#/intro">${iconSvg('home')}<span>${state.lang==='es'?'Inicio':'Home'}</span></a><a class="nav-button" href="#/grid">${iconSvg('grid')}<span>Grid</span></a><a class="nav-button ${currentTrack()?'':'is-disabled'}" ${currentTrack()?`href="${trackUrl(currentTrack().position)}"`:''}>${iconSvg('current')}<span>${state.lang==='es'?'Actual':'Current'}</span></a><a class="nav-button ${next?'':'is-disabled'}" ${next?`href="${trackUrl(next.position)}"`:''}>${iconSvg('next')}<span>${state.lang==='es'?'Siguiente':'Next'}</span></a></nav></section>`;
     bindForms();
   }
   function renderEnd(){
-    view.innerHTML=`<section class="end"><div><h1>Gracias</h1><div class="links"><a class="underlink" href="${esc(cfg.LINKTREE_URL)}" target="_blank" rel="noopener">Linktree ↗</a><a class="underlink" href="${esc(cfg.SPOTIFY_PLAYLIST_URL)}" target="_blank" rel="noopener">Spotify playlist ↗</a></div><p><a class="underlink" href="#/grid">${state.lang==='es'?'Volver al Grid':'Back to Grid'}</a></p></div></section>`;
+    view.innerHTML=`<section class="end"><div><h1>Gracias</h1><div class="links"><a class="underlink icon-link" href="${esc(cfg.LINKTREE_URL)}" target="_blank" rel="noopener"><span class="link-icon">${iconSvg('link')}</span><span>Linktree ↗</span></a><a class="underlink icon-link" href="${esc(cfg.SPOTIFY_PLAYLIST_URL)}" target="_blank" rel="noopener"><span class="link-icon">${iconSvg('music')}</span><span>Spotify playlist ↗</span></a></div><p><a class="underlink" href="#/grid">${state.lang==='es'?'Volver al Grid':'Back to Grid'}</a></p></div></section>`;
   }
   function renderError(msg){ view.innerHTML=`<section class="admin-login"><div class="notice error">${esc(msg)}</div></section>`; }
   async function renderRoute(){
@@ -302,7 +327,8 @@
           track_id:f.dataset.track||null,
           name,
           body,
-          client_id:clientId
+          client_id:clientId,
+          session_slug:state.session?.slug||fallbackSessionSlug
         });
         if(error){
           console.error('Comment error:', error);
