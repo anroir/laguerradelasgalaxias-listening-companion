@@ -14,6 +14,7 @@
   let previousSessionPosition = null;
   let sessionInitialized = false;
   let promptTimer = null;
+  let listenerCount = 0;
   const clientIdKey = 'ls_client_id';
   const clientId = localStorage.getItem(clientIdKey) || crypto.randomUUID();
   localStorage.setItem(clientIdKey, clientId);
@@ -27,6 +28,7 @@
   function esc(s=''){ return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
   function text(track, field){ return track[`${field}_${state.lang}`] || track[`${field}_${state.lang==='es'?'en':'es'}`] || ''; }
   function formatListeners(n){ return state.lang==='es' ? `${n} oyentes` : `${n} listeners`; }
+  function updateListenerLabel(){ if(countEl) countEl.textContent=formatListeners(listenerCount); }
   function trackUrl(n){ return `#/track/${n}`; }
   function getCurrent(){ return state.session?.status==='finished' ? null : state.session?.current_position || 0; }
   function isVisible(t){ return state.session?.status==='finished' || t.position <= getCurrent(); }
@@ -107,6 +109,7 @@
       if(x.client_id===clientId) liked[`track:${x.track_id}`]=true;
     });
     const {data:introLikes}=await supabase.from('likes').select('id,client_id').eq('target_type','intro').eq('session_slug',state.session?.slug||fallbackSessionSlug);
+    const {data:introComments}=await supabase.from('comments').select('id').eq('target_type','intro').eq('session_slug',state.session?.slug||fallbackSessionSlug).is('track_id',null);
     const {data:comments}=trackIds.length
       ? await supabase.from('comments').select('id,track_id').eq('target_type','track').eq('session_slug',state.session?.slug||fallbackSessionSlug).in('track_id',trackIds)
       : {data:[]};
@@ -116,6 +119,7 @@
     state.counts.likes=counts;
     state.counts.comments=commentCounts;
     state.counts.intro=(introLikes||[]).length;
+    state.counts.introComments=(introComments||[]).length;
     state.liked=liked;
   }
   function subscribeRealtime(){
@@ -147,7 +151,7 @@
     presenceChannel.on('presence',{event:'sync'},()=>updatePresenceCount()).subscribe(async status=>{ if(status==='SUBSCRIBED'){ await presenceChannel.track({online_at:new Date().toISOString()}); updatePresenceCount(); }});
   }
   function updatePresenceCount(){
-    const statePresence=presenceChannel?.presenceState?.()||{}; const n=Object.keys(statePresence).length; countEl.textContent=formatListeners(n); }
+    const statePresence=presenceChannel?.presenceState?.()||{}; const n=Object.keys(statePresence).length; listenerCount=n; updateListenerLabel(); }
   async function commentsFor(targetType,trackId){
     let q=supabase.from('comments').select('*').eq('target_type',targetType).order('created_at',{ascending:true}).limit(50);
     q=q.eq('session_slug',state.session?.slug||fallbackSessionSlug);
@@ -218,7 +222,9 @@
   }
   function renderGrid(){
     const ended=state.session?.status==='finished';
-    const coverTile=`<div class="track-tile intro-tile"><a href="#/intro"><div class="tile-cover intro-tile-cover"><img class="cover" src="${esc(state.session?.intro_cover_url||'')}" alt=""></div><div class="tile-overlay"><span class="tile-number">INTRO</span><div class="tile-info">${esc(text(state.session||{},'intro_title')||state.session?.title||'Listening session')}</div></div></a></div>`;
+    const introLikes=state.counts.intro||0;
+    const introComments=state.counts.introComments||0;
+    const coverTile=`<div class="track-tile intro-tile"><a href="#/intro"><div class="tile-cover intro-tile-cover"><img class="cover" src="${esc(state.session?.intro_cover_url||'')}" alt=""></div><div class="tile-overlay"><span class="tile-number">INTRO</span><div class="tile-info">${esc(text(state.session||{},'intro_title')||state.session?.title||'Listening session')}</div><div class="tile-reactions"><span>♥ ${introLikes}</span><span>◌ ${introComments}</span></div></div></a></div>`;
     const tiles=state.tracks.map(t=>{
       const unlocked=isVisible(t); const current=!ended && t.position===getCurrent();
       if(!unlocked) return `<div class="track-tile locked"><span class="tile-number">${String(t.position).padStart(2,'0')}</span></div>`;
@@ -343,7 +349,7 @@
     });
   }
 
-  langBtn.onclick=()=>{state.lang=state.lang==='es'?'en':'es';localStorage.setItem('ls_lang',state.lang);renderRoute();};
+  langBtn.onclick=()=>{state.lang=state.lang==='es'?'en':'es';localStorage.setItem('ls_lang',state.lang);updateListenerLabel();renderRoute();};
   window.addEventListener('hashchange',async()=>{ await renderRoute(); window.scrollTo({top:0,left:0,behavior:'auto'}); });
   window.addEventListener('resize',()=>{ if(location.hash==='#/intro' || !location.hash) fitIntroText(); });
   load();
